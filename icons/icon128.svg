@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#D4941F"/>
+      <stop offset="100%" stop-color="#A86F15"/>
+    </linearGradient>
+    <linearGradient id="page1" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="100%" stop-color="#F5F1EB"/>
+    </linearGradient>
+    <linearGradient id="page2" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#FFF8ED"/>
+      <stop offset="100%" stop-color="#F0E8D8"/>
+    </linearGradient>
+  </defs>
+  <!-- Background -->
+  <rect width="128" height="128" rx="24" fill="url(#bg)"/>
+  <!-- Inner shadow -->
+  <rect width="128" height="128" rx="24" fill="none" stroke="rgba(255,255,255,0.15)" stroke-width="1"/>
+  <!-- Back page (translated text) -->
+  <rect x="38" y="22" width="72" height="88" rx="6" fill="url(#page2)" opacity="0.85"/>
+  <line x1="48" y1="40" x2="98" y2="40" stroke="#C4841D" stroke-width="3" stroke-linecap="round" opacity="0.5"/>
+  <line x1="48" y1="52" x2="90" y2="52" stroke="#C4841D" stroke-width="3" stroke-linecap="round" opacity="0.5"/>
+  <line x1="48" y1="64" x2="94" y2="64" stroke="#C4841D" stroke-width="3" stroke-linecap="round" opacity="0.5"/>
+  <line x1="48" y1="76" x2="82" y2="76" stroke="#C4841D" stroke-width="3" stroke-linecap="round" opacity="0.5"/>
+  <line x1="48" y1="88" x2="88" y2="88" stroke="#C4841D" stroke-width="3" stroke-linecap="round" opacity="0.5"/>
+  <!-- Front page (original text) -->
+  <rect x="18" y="18" width="72" height="88" rx="6" fill="url(#page1)"/>
+  <rect x="18" y="18" width="72" height="88" rx="6" fill="none" stroke="rgba(0,0,0,0.06)" stroke-width="1"/>
+  <line x1="30" y1="36" x2="76" y2="36" stroke="#2D2B29" stroke-width="3" stroke-linecap="round" opacity="0.7"/>
+  <line x1="30" y1="48" x2="68" y2="48" stroke="#2D2B29" stroke-width="3" stroke-linecap="round" opacity="0.7"/>
+  <line x1="30" y1="60" x2="74" y2="60" stroke="#2D2B29" stroke-width="3" stroke-linecap="round" opacity="0.7"/>
+  <line x1="30" y1="72" x2="60" y2="72" stroke="#2D2B29" stroke-width="3" stroke-linecap="round" opacity="0.7"/>
+  <line x1="30" y1="84" x2="70" y2="84" stroke="#2D2B29" stroke-width="3" stroke-linecap="round" opacity="0.7"/>
+  <!-- Translation arrow -->
+  <circle cx="86" cy="98" r="14" fill="white" opacity="0.95"/>
+  <path d="M80 95l6-3v2h6v2h-6v2z" fill="#C4841D" transform="translate(0, 2)"/>
+  <path d="M92 101l-6 3v-2h-6v-2h6v-2z" fill="#A86F15" transform="translate(0, 2)"/>
+</svg>

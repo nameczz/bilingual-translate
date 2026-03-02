@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Translate Settings</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="popup-container">
+    <!-- Header -->
+    <header class="popup-header">
+      <div class="logo-mark">
+        <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+          <rect x="2" y="2" width="11" height="24" rx="2" fill="var(--accent)" opacity="0.9"/>
+          <rect x="15" y="2" width="11" height="24" rx="2" fill="var(--accent-muted)" opacity="0.5"/>
+          <path d="M5 9h5M5 13h4M5 17h5" stroke="white" stroke-width="1.2" stroke-linecap="round"/>
+          <path d="M18 9h5M18 13h4M18 17h5" stroke="var(--accent)" stroke-width="1.2" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <div class="header-text">
+        <h1>Dual Read</h1>
+        <span class="version-badge">v0.1</span>
+      </div>
+      <button class="toggle-power" id="togglePower" title="Toggle translation">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <path d="M12 2v6"/>
+          <path d="M18.4 6.6a9 9 0 1 1-12.8 0"/>
+        </svg>
+      </button>
+    </header>
+
+    <!-- Status Bar -->
+    <div class="status-bar" id="statusBar">
+      <div class="status-dot"></div>
+      <span class="status-text">Ready to translate</span>
+    </div>
+
+    <!-- Tab Navigation -->
+    <nav class="tab-nav">
+      <button class="tab-btn active" data-tab="general">General</button>
+      <button class="tab-btn" data-tab="api">API Keys</button>
+      <button class="tab-btn" data-tab="display">Display</button>
+    </nav>
+
+    <!-- Tab: General Settings -->
+    <section class="tab-panel active" id="tab-general">
+      <div class="setting-group">
+        <label class="setting-label">Source Language</label>
+        <div class="select-wrapper">
+          <select id="sourceLang">
+            <option value="auto">Auto Detect</option>
+            <option value="en">English</option>
+            <option value="zh">Chinese (Simplified)</option>
+            <option value="zh-TW">Chinese (Traditional)</option>
+            <option value="ja">Japanese</option>
+            <option value="ko">Korean</option>
+            <option value="fr">French</option>
+            <option value="de">German</option>
+            <option value="es">Spanish</option>
+            <option value="ru">Russian</option>
+          </select>
+          <svg class="select-arrow" width="12" height="12" viewBox="0 0 12 12"><path d="M3 4.5l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        </div>
+      </div>
+
+      <div class="setting-group">
+        <label class="setting-label">Target Language</label>
+        <div class="select-wrapper">
+          <select id="targetLang">
+            <option value="zh">Chinese (Simplified)</option>
+            <option value="en">English</option>
+            <option value="zh-TW">Chinese (Traditional)</option>
+            <option value="ja">Japanese</option>
+            <option value="ko">Korean</option>
+            <option value="fr">French</option>
+            <option value="de">German</option>
+            <option value="es">Spanish</option>
+            <option value="ru">Russian</option>
+          </select>
+          <svg class="select-arrow" width="12" height="12" viewBox="0 0 12 12"><path d="M3 4.5l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        </div>
+      </div>
+
+      <div class="setting-group">
+        <label class="setting-label">Translation Trigger</label>
+        <div class="trigger-options">
+          <label class="radio-card">
+            <input type="radio" name="trigger" value="button" checked>
+            <div class="radio-card-inner">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="8" width="18" height="8" rx="4"/><circle cx="8" cy="12" r="2" fill="currentColor"/></svg>
+              <span>Button</span>
+            </div>
+          </label>
+          <label class="radio-card">
+            <input type="radio" name="trigger" value="hover">
+            <div class="radio-card-inner">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M5 3l14 9-7 1-4 7z"/></svg>
+              <span>Hover</span>
+            </div>
+          </label>
+          <label class="radio-card">
+            <input type="radio" name="trigger" value="select">
+            <div class="radio-card-inner">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 7h16M4 12h10M4 17h13"/><path d="M17 15l3 3-3 3" stroke-linecap="round"/></svg>
+              <span>Select</span>
+            </div>
+          </label>
+        </div>
+      </div>
+    </section>
+
+    <!-- Tab: API Configuration -->
+    <section class="tab-panel" id="tab-api">
+      <div class="setting-group">
+        <label class="setting-label">Translation Provider</label>
+        <div class="select-wrapper">
+          <select id="provider">
+            <option value="claude">Claude (Anthropic)</option>
+            <option value="kimi">Kimi (Moonshot AI)</option>
+            <option value="openai">OpenAI</option>
+            <option value="gemini">Gemini (Google)</option>
+            <option value="deepseek">DeepSeek</option>
+            <option value="qwen">Qwen (通义千问)</option>
+            <option value="doubao">Doubao (豆包)</option>
+          </select>
+          <svg class="select-arrow" width="12" height="12" viewBox="0 0 12 12"><path d="M3 4.5l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        </div>
+      </div>
+
+      <div class="setting-group">
+        <label class="setting-label">API Key</label>
+        <div class="input-wrapper">
+          <input type="password" id="apiKey" placeholder="sk-..." autocomplete="off">
+          <button class="input-action" id="toggleKeyVisibility" title="Show/hide key">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+              <circle cx="12" cy="12" r="3"/>
+            </svg>
+          </button>
+        </div>
+        <p class="setting-hint">Your key is stored locally and encrypted. Never shared.</p>
+      </div>
+
+      <div class="setting-group" id="apiUrlGroup" style="display: none;">
+        <label class="setting-label">Custom API URL <span class="optional-tag">Optional</span></label>
+        <div class="input-wrapper">
+          <input type="url" id="apiUrl" placeholder="https://api.example.com/v1">
+        </div>
+      </div>
+
+      <div class="setting-group">
+        <label class="setting-label">Model</label>
+        <div class="select-wrapper">
+          <select id="model">
+            <option value="claude-sonnet-4-5-20250929">Claude Sonnet 4.5</option>
+            <option value="claude-haiku-4-5-20251001">Claude Haiku 4.5 (Fast)</option>
+            <option value="claude-opus-4-6">Claude Opus 4.6</option>
+          </select>
+          <svg class="select-arrow" width="12" height="12" viewBox="0 0 12 12"><path d="M3 4.5l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        </div>
+      </div>
+
+      <button class="btn-verify" id="verifyKey">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg>
+        Verify Connection
+      </button>
+    </section>
+
+    <!-- Tab: Display Settings -->
+    <section class="tab-panel" id="tab-display">
+      <div class="setting-group">
+        <label class="setting-label">Translation Style</label>
+        <div class="style-preview-grid">
+          <label class="style-card">
+            <input type="radio" name="displayStyle" value="underline" checked>
+            <div class="style-card-inner">
+              <div class="style-preview style-preview--underline">
+                <span class="preview-original">Hello World</span>
+                <span class="preview-translated">你好世界</span>
+              </div>
+              <span>Below Text</span>
+            </div>
+          </label>
+          <label class="style-card">
+            <input type="radio" name="displayStyle" value="side">
+            <div class="style-card-inner">
+              <div class="style-preview style-preview--side">
+                <span class="preview-original">Hello</span>
+                <span class="preview-divider">|</span>
+                <span class="preview-translated">你好</span>
+              </div>
+              <span>Side by Side</span>
+            </div>
+          </label>
+          <label class="style-card">
+            <input type="radio" name="displayStyle" value="tooltip">
+            <div class="style-card-inner">
+              <div class="style-preview style-preview--tooltip">
+                <span class="preview-original">Hello</span>
+                <span class="preview-tooltip">你好</span>
+              </div>
+              <span>Tooltip</span>
+            </div>
+          </label>
+        </div>
+      </div>
+
+      <div class="setting-group">
+        <label class="setting-label">Translation Font Size</label>
+        <div class="slider-group">
+          <input type="range" id="fontSize" min="70" max="120" value="90" class="range-slider">
+          <span class="slider-value" id="fontSizeValue">90%</span>
+        </div>
+      </div>
+
+      <div class="setting-group">
+        <div class="toggle-row">
+          <div>
+            <label class="setting-label no-margin">Translation Color</label>
+            <p class="setting-hint no-margin">Tint translated text for distinction</p>
+          </div>
+          <label class="toggle-switch">
+            <input type="checkbox" id="colorTranslation" checked>
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+      </div>
+
+      <div class="setting-group">
+        <div class="toggle-row">
+          <div>
+            <label class="setting-label no-margin">Smooth Animations</label>
+            <p class="setting-hint no-margin">Fade-in effect for translations</p>
+          </div>
+          <label class="toggle-switch">
+            <input type="checkbox" id="smoothAnimations" checked>
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+      </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="popup-footer">
+      <button class="btn-save" id="saveSettings">Save Settings</button>
+    </footer>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

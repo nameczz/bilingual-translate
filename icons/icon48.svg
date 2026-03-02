@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#D4941F"/>
+      <stop offset="100%" stop-color="#A86F15"/>
+    </linearGradient>
+  </defs>
+  <!-- Background -->
+  <rect width="48" height="48" rx="10" fill="url(#bg)"/>
+  <rect width="48" height="48" rx="10" fill="none" stroke="rgba(255,255,255,0.15)" stroke-width="0.5"/>
+  <!-- Back page -->
+  <rect x="15" y="8" width="26" height="33" rx="3" fill="#FFF8ED" opacity="0.8"/>
+  <line x1="19" y1="15" x2="36" y2="15" stroke="#C4841D" stroke-width="1.5" stroke-linecap="round" opacity="0.45"/>
+  <line x1="19" y1="20" x2="33" y2="20" stroke="#C4841D" stroke-width="1.5" stroke-linecap="round" opacity="0.45"/>
+  <line x1="19" y1="25" x2="35" y2="25" stroke="#C4841D" stroke-width="1.5" stroke-linecap="round" opacity="0.45"/>
+  <line x1="19" y1="30" x2="30" y2="30" stroke="#C4841D" stroke-width="1.5" stroke-linecap="round" opacity="0.45"/>
+  <!-- Front page -->
+  <rect x="7" y="7" width="26" height="33" rx="3" fill="white"/>
+  <rect x="7" y="7" width="26" height="33" rx="3" fill="none" stroke="rgba(0,0,0,0.06)" stroke-width="0.5"/>
+  <line x1="11" y1="14" x2="28" y2="14" stroke="#2D2B29" stroke-width="1.5" stroke-linecap="round" opacity="0.65"/>
+  <line x1="11" y1="19" x2="25" y2="19" stroke="#2D2B29" stroke-width="1.5" stroke-linecap="round" opacity="0.65"/>
+  <line x1="11" y1="24" x2="27" y2="24" stroke="#2D2B29" stroke-width="1.5" stroke-linecap="round" opacity="0.65"/>
+  <line x1="11" y1="29" x2="22" y2="29" stroke="#2D2B29" stroke-width="1.5" stroke-linecap="round" opacity="0.65"/>
+  <!-- Arrow badge -->
+  <circle cx="33" cy="37" r="5.5" fill="white" opacity="0.95"/>
+  <path d="M30.5 36l2.5-1.5v1h2.5v1H33v1z" fill="#C4841D"/>
+  <path d="M35.5 38l-2.5 1.5v-1h-2.5v-1H33v-1z" fill="#A86F15"/>
+</svg>
