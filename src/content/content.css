@@ -472,11 +472,151 @@
   }
 }
 
+/* ---- Streaming Translation ---- */
+
+/* Active streaming state: override slide-in, show immediately */
+.bilingual-translation.streaming {
+  opacity: 1;
+  animation: none;
+}
+
+/* Each word/chunk fades in as it arrives */
+.bilingual-translation.streaming .bilingual-stream-word {
+  opacity: 0;
+  animation: bilingual-word-appear 0.3s ease forwards;
+}
+
+/* Typewriter cursor: blinking caret at end of streaming text */
+.bilingual-translation.streaming::after {
+  content: '';
+  display: inline-block;
+  width: 2px;
+  height: 1.1em;
+  background: #C4841D;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  border-radius: 1px;
+  animation: bilingual-cursor-blink 0.8s steps(2) infinite;
+}
+
+@media (prefers-color-scheme: dark) {
+  .bilingual-translation.streaming::after {
+    background: #D4A54A;
+  }
+}
+
+/* Cursor fades out when streaming completes */
+.bilingual-translation.stream-done::after {
+  animation: bilingual-cursor-fade 0.4s ease forwards;
+}
+
+@keyframes bilingual-word-appear {
+  from {
+    opacity: 0;
+    filter: blur(2px);
+    transform: translateY(2px);
+  }
+  to {
+    opacity: 1;
+    filter: blur(0);
+    transform: translateY(0);
+  }
+}
+
+@keyframes bilingual-cursor-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+@keyframes bilingual-cursor-fade {
+  from { opacity: 1; }
+  to { opacity: 0; width: 0; margin-left: 0; }
+}
+
+/* ---- Hover Translation Tooltip ---- */
+.bilingual-hover-tooltip {
+  position: fixed;
+  z-index: 2147483646;
+  max-width: 400px;
+  min-width: 120px;
+  padding: 12px 16px;
+  background: rgba(45, 43, 41, 0.92);
+  color: #FAF8F5;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 13.5px;
+  line-height: 1.65;
+  border-radius: 8px;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow:
+    0 8px 32px rgba(45, 43, 41, 0.18),
+    0 2px 8px rgba(45, 43, 41, 0.10);
+  pointer-events: none;
+  opacity: 0;
+  animation: bilingual-tooltip-in 0.2s ease forwards;
+  word-wrap: break-word;
+}
+
+.bilingual-hover-tooltip::before {
+  content: '';
+  position: absolute;
+  bottom: -6px;
+  left: 24px;
+  width: 12px;
+  height: 12px;
+  background: rgba(45, 43, 41, 0.92);
+  transform: rotate(45deg);
+  border-radius: 0 0 2px 0;
+}
+
+.bilingual-hover-tooltip.arrow-top::before {
+  bottom: auto;
+  top: -6px;
+  border-radius: 2px 0 0 0;
+}
+
+.bilingual-hover-tooltip .tooltip-source {
+  font-size: 10px;
+  color: rgba(250, 248, 245, 0.5);
+  margin-bottom: 4px;
+  font-weight: 500;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.bilingual-hover-tooltip .tooltip-text {
+  color: #FAF8F5;
+}
+
+@media (prefers-color-scheme: dark) {
+  .bilingual-hover-tooltip {
+    background: rgba(60, 57, 53, 0.95);
+    box-shadow:
+      0 8px 32px rgba(0, 0, 0, 0.3),
+      0 2px 8px rgba(0, 0, 0, 0.2);
+  }
+  .bilingual-hover-tooltip::before {
+    background: rgba(60, 57, 53, 0.95);
+  }
+}
+
+@keyframes bilingual-tooltip-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 /* ---- Print: hide all extension UI ---- */
 @media print {
   .bilingual-translation,
   .bilingual-popup,
   .bilingual-toast,
+  .bilingual-hover-tooltip,
   #bilingual-fab,
   #bilingual-progress-bar {
     display: none !important;

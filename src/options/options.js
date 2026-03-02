@@ -176,4 +176,78 @@ function showResult(el, text, type) {
   setTimeout(() => { el.style.display = 'none'; }, 5000);
 }
 
+// ========================================
+// Site Rules (Whitelist / Blacklist)
+// ========================================
+
+const whitelistInput = document.getElementById('whitelistInput');
+const blacklistInput = document.getElementById('blacklistInput');
+const addWhitelistBtn = document.getElementById('addWhitelist');
+const addBlacklistBtn = document.getElementById('addBlacklist');
+const whitelistRulesEl = document.getElementById('whitelistRules');
+const blacklistRulesEl = document.getElementById('blacklistRules');
+
+async function loadSiteRules() {
+  const rules = await chrome.runtime.sendMessage({ action: 'getSiteRules' });
+  renderRuleList(whitelistRulesEl, rules.whitelist, 'whitelist');
+  renderRuleList(blacklistRulesEl, rules.blacklist, 'blacklist');
+}
+
+function renderRuleList(container, patterns, list) {
+  if (!container) return;
+  container.innerHTML = '';
+  if (patterns.length === 0) {
+    container.innerHTML = '<li class="rule-empty">No rules yet</li>';
+    return;
+  }
+  for (const pattern of patterns) {
+    const li = document.createElement('li');
+    li.className = 'rule-item';
+    li.innerHTML = `
+      <span class="rule-pattern">${escapeHtml(pattern)}</span>
+      <button class="rule-delete" data-list="${list}" data-pattern="${escapeHtml(pattern)}" title="Remove">&times;</button>
+    `;
+    li.querySelector('.rule-delete').addEventListener('click', async (e) => {
+      await chrome.runtime.sendMessage({
+        action: 'removeSiteRule',
+        list: e.target.dataset.list,
+        pattern: e.target.dataset.pattern,
+      });
+      loadSiteRules();
+    });
+    container.appendChild(li);
+  }
+}
+
+addWhitelistBtn?.addEventListener('click', async () => {
+  const pattern = whitelistInput?.value?.trim();
+  if (!pattern) return;
+  await chrome.runtime.sendMessage({ action: 'addSiteRule', list: 'whitelist', pattern });
+  whitelistInput.value = '';
+  loadSiteRules();
+});
+
+addBlacklistBtn?.addEventListener('click', async () => {
+  const pattern = blacklistInput?.value?.trim();
+  if (!pattern) return;
+  await chrome.runtime.sendMessage({ action: 'addSiteRule', list: 'blacklist', pattern });
+  blacklistInput.value = '';
+  loadSiteRules();
+});
+
+// Allow Enter key to add rules
+whitelistInput?.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') addWhitelistBtn?.click();
+});
+blacklistInput?.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') addBlacklistBtn?.click();
+});
+
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
 loadSettings();
+loadSiteRules();

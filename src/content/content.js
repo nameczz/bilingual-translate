@@ -15,6 +15,12 @@ let isTranslating = false;
 let translationsHidden = false;
 let settings = null;
 let fab = null;
+let mutationObserver = null;
+let observerTranslateTimer = null;
+let isAutoTranslating = false; // true when MutationObserver-driven translation is active
+
+const MAX_CONCURRENCY = 3; // parallel streaming connections
+const MERGE_CHAR_LIMIT = 300; // merge short paragraphs below this total
 
 /**
  * Initialize content script.
@@ -22,7 +28,31 @@ let fab = null;
 async function init() {
   settings = await chrome.runtime.sendMessage({ action: 'getSettings' });
   setupMessageListener();
+
+  // Check site rules before creating FAB
+  const hostname = window.location.hostname;
+  if (hostname) {
+    try {
+      const { rule } = await chrome.runtime.sendMessage({
+        action: 'checkSiteRule',
+        hostname,
+      });
+      if (rule === 'blacklist') {
+        // Site is blacklisted — don't create FAB, don't translate
+        return;
+      }
+      if (rule === 'whitelist') {
+        // Site is whitelisted — auto-translate after FAB creation
+        createFAB();
+        setupHoverTranslation();
+        translatePage();
+        return;
+      }
+    } catch { /* ignore, proceed normally */ }
+  }
+
   createFAB();
+  setupHoverTranslation();
 }
 
 function setupMessageListener() {
@@ -58,6 +88,12 @@ function setupMessageListener() {
         settings = message.settings;
         sendResponse({ success: true });
         return false;
+
+      case 'getSelection': {
+        const text = window.getSelection()?.toString()?.trim();
+        sendResponse({ text: text || '' });
+        return false;
+      }
     }
   });
 }
@@ -319,6 +355,89 @@ function hideProgressBar() {
 }
 
 // ========================================
+// MutationObserver for Dynamic Content
+// ========================================
+
+/**
+ * Start observing DOM for new content (infinite scroll, SPA navigation, etc.)
+ * Translates newly added text nodes automatically after translatePage() completes.
+ */
+function startObservingDOM() {
+  if (mutationObserver) return;
+
+  isAutoTranslating = true;
+
+  mutationObserver = new MutationObserver((mutations) => {
+    if (translationsHidden || !isAutoTranslating) return;
+
+    // Check if any mutation added meaningful nodes
+    let hasNewContent = false;
+    for (const mutation of mutations) {
+      if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
+        for (const node of mutation.addedNodes) {
+          if (node.nodeType === Node.ELEMENT_NODE &&
+              !node.classList?.contains(TRANSLATION_CLASS) &&
+              !node.closest?.(`#${FAB_ID}, #${PROGRESS_BAR_ID}, .bilingual-hover-tooltip, .bilingual-popup`)) {
+            hasNewContent = true;
+            break;
+          }
+        }
+      }
+      if (hasNewContent) break;
+    }
+
+    if (!hasNewContent) return;
+
+    // Debounce: wait for DOM to settle before translating new content
+    clearTimeout(observerTranslateTimer);
+    observerTranslateTimer = setTimeout(() => {
+      translateNewContent();
+    }, 800);
+  });
+
+  mutationObserver.observe(document.body, {
+    childList: true,
+    subtree: true,
+  });
+}
+
+/**
+ * Stop observing DOM changes.
+ */
+function stopObservingDOM() {
+  if (mutationObserver) {
+    mutationObserver.disconnect();
+    mutationObserver = null;
+  }
+  isAutoTranslating = false;
+  clearTimeout(observerTranslateTimer);
+}
+
+/**
+ * Translate only newly added (untranslated) content on the page.
+ * Called by the MutationObserver when new DOM nodes appear.
+ */
+async function translateNewContent() {
+  if (isTranslating) return;
+
+  const rawParagraphs = extractParagraphs(document.body);
+  if (rawParagraphs.length === 0) return;
+
+  isTranslating = true;
+
+  try {
+    const paragraphs = mergeParagraphs(rawParagraphs);
+    await runWithConcurrency(
+      paragraphs,
+      MAX_CONCURRENCY,
+      (para) => translateParagraphStreaming(para),
+    );
+  } finally {
+    isTranslating = false;
+  }
+}
+
+// ========================================
 // Toggle Translations Visibility
 // ========================================
 
@@ -359,8 +478,221 @@ function showTranslations() {
 // Translation Logic
 // ========================================
 
+const BLOCK_TAGS = new Set([
+  'P', 'DIV', 'ARTICLE', 'SECTION', 'MAIN', 'ASIDE', 'HEADER', 'FOOTER',
+  'H1', 'H2', 'H3', 'H4', 'H5', 'H6',
+  'LI', 'TD', 'TH', 'BLOCKQUOTE', 'FIGCAPTION', 'DD', 'DT',
+]);
+
 /**
- * Translate the entire page content.
+ * Find the nearest block-level ancestor of a node.
+ */
+function getBlockAncestor(node) {
+  let el = node.parentElement;
+  while (el && el !== document.body) {
+    if (BLOCK_TAGS.has(el.tagName)) return el;
+    el = el.parentElement;
+  }
+  return node.parentElement || document.body;
+}
+
+/**
+ * Group text nodes by their block-level ancestor (paragraph grouping).
+ * Returns an array of { blockEl, nodes: [{node, text}] } in DOM order.
+ */
+function extractParagraphs(root) {
+  const textNodes = extractTextNodes(root);
+  if (textNodes.length === 0) return [];
+
+  const groups = [];
+  const blockMap = new Map();
+
+  for (const item of textNodes) {
+    const block = getBlockAncestor(item.node);
+    if (!blockMap.has(block)) {
+      const group = { blockEl: block, nodes: [] };
+      blockMap.set(block, group);
+      groups.push(group);
+    }
+    blockMap.get(block).nodes.push(item);
+  }
+
+  return groups;
+}
+
+/**
+ * Translate a single paragraph group using streaming.
+ * Shows translation character-by-character as it arrives.
+ */
+function translateParagraphStreaming(paragraph) {
+  return new Promise((resolve, reject) => {
+    const { nodes } = paragraph;
+    const fullText = nodes.map(n => n.text).join(' ');
+
+    // Create translation element on the first node, streaming mode
+    const firstNode = nodes[0].node;
+    const parent = firstNode.parentElement;
+    if (!parent || parent.hasAttribute(TRANSLATED_ATTR)) {
+      resolve();
+      return;
+    }
+
+    const blockEl = paragraph.blockEl;
+    blockEl.setAttribute(TRANSLATED_ATTR, 'true');
+
+    const translationEl = document.createElement('span');
+    translationEl.className = TRANSLATION_CLASS;
+    translationEl.classList.add('streaming');
+
+    const style = settings?.displayStyle || 'underline';
+    if (style === 'side') translationEl.classList.add('bilingual-side');
+    if (settings?.colorTranslation === false) translationEl.classList.add('no-color');
+    if (settings?.translationFontSize && settings.translationFontSize !== 90) {
+      translationEl.style.fontSize = (settings.translationFontSize / 100) + 'em';
+    }
+
+    // Insert after the block element
+    if (blockEl.nextSibling) {
+      blockEl.parentNode.insertBefore(translationEl, blockEl.nextSibling);
+    } else {
+      blockEl.parentNode.appendChild(translationEl);
+    }
+
+    // Mark all nodes in this paragraph as translated
+    for (const item of nodes) {
+      const p = item.node.parentElement;
+      if (p && p !== blockEl) p.setAttribute(TRANSLATED_ATTR, 'true');
+    }
+
+    // Stream translation
+    const port = chrome.runtime.connect({ name: 'translate-stream' });
+    let accumulated = '';
+    let settled = false;
+
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      translationEl.classList.remove('streaming');
+      translationEl.classList.add('stream-done');
+      resolve();
+    };
+
+    port.onMessage.addListener((msg) => {
+      if (msg.type === 'chunk') {
+        accumulated += msg.text;
+        translationEl.textContent = accumulated;
+      } else if (msg.type === 'done') {
+        port.disconnect();
+        finish();
+      } else if (msg.type === 'error') {
+        port.disconnect();
+        // Fallback: use non-streaming
+        translateParagraphFallback(paragraph, translationEl)
+          .then(finish)
+          .catch(() => { translationEl.textContent = 'Translation failed'; finish(); });
+      }
+    });
+
+    port.onDisconnect.addListener(() => {
+      if (!accumulated && !settled) {
+        // Port disconnected without data — fallback
+        translateParagraphFallback(paragraph, translationEl)
+          .then(finish)
+          .catch(() => { translationEl.textContent = 'Translation failed'; finish(); });
+      } else {
+        finish();
+      }
+    });
+
+    port.postMessage({ action: 'translateStream', text: fullText });
+  });
+}
+
+/**
+ * Fallback: translate paragraph via regular (non-streaming) API.
+ */
+async function translateParagraphFallback(paragraph, translationEl) {
+  const fullText = paragraph.nodes.map(n => n.text).join(' ');
+  const response = await chrome.runtime.sendMessage({
+    action: 'translate',
+    text: fullText,
+  });
+  if (response.error) {
+    throw new Error(response.error);
+  }
+  translationEl.textContent = response.translatedText;
+}
+
+/**
+ * Merge adjacent short paragraphs into larger groups to reduce API calls.
+ * Long paragraphs are kept standalone for streaming benefit.
+ */
+function mergeParagraphs(paragraphs) {
+  const merged = [];
+  let accumGroup = null;
+  let accumLen = 0;
+
+  for (const para of paragraphs) {
+    const paraLen = para.nodes.reduce((s, n) => s + n.text.length, 0);
+
+    if (paraLen >= MERGE_CHAR_LIMIT) {
+      // Flush any accumulated short group first
+      if (accumGroup) { merged.push(accumGroup); accumGroup = null; accumLen = 0; }
+      merged.push(para);
+    } else {
+      if (accumGroup && accumLen + paraLen > MERGE_CHAR_LIMIT) {
+        // Current accumulation is full, flush it
+        merged.push(accumGroup);
+        accumGroup = null;
+        accumLen = 0;
+      }
+      if (!accumGroup) {
+        accumGroup = { blockEl: para.blockEl, nodes: [...para.nodes], _merged: [para] };
+        accumLen = paraLen;
+      } else {
+        accumGroup.nodes.push(...para.nodes);
+        accumGroup._merged.push(para);
+        accumLen += paraLen;
+      }
+    }
+  }
+  if (accumGroup) merged.push(accumGroup);
+  return merged;
+}
+
+/**
+ * Run an array of async tasks with concurrency limit.
+ * @param {Array} items
+ * @param {number} concurrency
+ * @param {function} fn - async (item, index) => void
+ * @param {function} [onProgress] - (completed) => void
+ */
+async function runWithConcurrency(items, concurrency, fn, onProgress) {
+  let next = 0;
+  let completed = 0;
+
+  async function worker() {
+    while (next < items.length) {
+      const idx = next++;
+      try {
+        await fn(items[idx], idx);
+      } catch (err) {
+        console.error('[Bilingual Translate] Paragraph error:', err);
+      }
+      completed++;
+      onProgress?.(completed);
+    }
+  }
+
+  const workers = [];
+  for (let i = 0; i < Math.min(concurrency, items.length); i++) {
+    workers.push(worker());
+  }
+  await Promise.all(workers);
+}
+
+/**
+ * Translate the entire page content, paragraph by paragraph with concurrency.
  */
 async function translatePage() {
   if (isTranslating) return;
@@ -369,49 +701,31 @@ async function translatePage() {
   updateFABState('loading');
 
   try {
-    const textNodes = extractTextNodes(document.body);
-    if (textNodes.length === 0) {
+    const rawParagraphs = extractParagraphs(document.body);
+    if (rawParagraphs.length === 0) {
       updateFABState('idle');
       return;
     }
 
-    const batches = batchTextNodes(textNodes, 1500);
-    const totalBatches = batches.length;
+    const paragraphs = mergeParagraphs(rawParagraphs);
 
     showProgressBar();
-    updateProgressBar(0, totalBatches);
+    updateProgressBar(0, paragraphs.length);
 
-    for (let bIdx = 0; bIdx < batches.length; bIdx++) {
-      const batch = batches[bIdx];
-      const texts = batch.map(item => item.text);
-
-      try {
-        const response = await chrome.runtime.sendMessage({
-          action: 'translateBatch',
-          texts,
-        });
-
-        if (response.error) {
-          console.error('[Bilingual Translate]', response.error);
-          break;
-        }
-
-        for (let i = 0; i < batch.length; i++) {
-          const { node } = batch[i];
-          const translated = response.results[i]?.translatedText;
-          if (translated) {
-            insertTranslation(node, translated);
-          }
-        }
-      } catch (err) {
-        console.error('[Bilingual Translate] Batch error:', err);
-      }
-
-      updateProgressBar(bIdx + 1, totalBatches);
-    }
+    await runWithConcurrency(
+      paragraphs,
+      MAX_CONCURRENCY,
+      (para) => translateParagraphStreaming(para),
+      (done) => updateProgressBar(done, paragraphs.length),
+    );
 
     hideProgressBar();
     updateFABState(hasTranslations() ? 'active' : 'idle');
+
+    // Start watching for dynamically loaded content (infinite scroll, SPA, etc.)
+    if (hasTranslations()) {
+      startObservingDOM();
+    }
   } finally {
     isTranslating = false;
   }
@@ -462,8 +776,8 @@ function extractTextNodes(root) {
         if (parent.closest('[translate="no"], .notranslate')) return NodeFilter.FILTER_REJECT;
         if (parent.closest(`[${TRANSLATED_ATTR}]`)) return NodeFilter.FILTER_REJECT;
         if (parent.classList.contains(TRANSLATION_CLASS)) return NodeFilter.FILTER_REJECT;
-        // Skip FAB element
-        if (parent.closest(`#${FAB_ID}`)) return NodeFilter.FILTER_REJECT;
+        // Skip extension UI elements
+        if (parent.closest(`#${FAB_ID}, #${PROGRESS_BAR_ID}, .bilingual-hover-tooltip, .bilingual-popup, .bilingual-toast`)) return NodeFilter.FILTER_REJECT;
         const text = node.textContent.trim();
         if (text.length < MIN_LENGTH) return NodeFilter.FILTER_REJECT;
         if (/^[\d\s\p{P}]+$/u.test(text)) return NodeFilter.FILTER_REJECT;
@@ -477,31 +791,6 @@ function extractTextNodes(root) {
     results.push({ node, text: node.textContent.trim() });
   }
   return results;
-}
-
-/**
- * Group text nodes into batches for efficient translation.
- */
-function batchTextNodes(textNodes, maxBatchSize) {
-  const batches = [];
-  let currentBatch = [];
-  let currentSize = 0;
-
-  for (const item of textNodes) {
-    if (currentSize + item.text.length > maxBatchSize && currentBatch.length > 0) {
-      batches.push(currentBatch);
-      currentBatch = [];
-      currentSize = 0;
-    }
-    currentBatch.push(item);
-    currentSize += item.text.length;
-  }
-
-  if (currentBatch.length > 0) {
-    batches.push(currentBatch);
-  }
-
-  return batches;
 }
 
 /**
@@ -549,6 +838,7 @@ function insertTranslation(textNode, translatedText) {
  * Remove all translations from the page.
  */
 function removeAllTranslations() {
+  stopObservingDOM();
   document.querySelectorAll(`.${TRANSLATION_CLASS}`).forEach(el => el.remove());
   document.querySelectorAll(`[${TRANSLATED_ATTR}]`).forEach(el => {
     el.removeAttribute(TRANSLATED_ATTR);
@@ -632,6 +922,129 @@ function escapeHtml(text) {
   const div = document.createElement('div');
   div.textContent = text;
   return div.innerHTML;
+}
+
+// ========================================
+// Hover Translation Tooltip
+// ========================================
+
+let hoverTooltip = null;
+let hoverTimeout = null;
+
+function setupHoverTranslation() {
+  document.addEventListener('mouseup', (e) => {
+    // Ignore clicks on our own UI
+    if (e.target.closest(`#${FAB_ID}, .bilingual-popup, .bilingual-hover-tooltip`)) return;
+
+    clearTimeout(hoverTimeout);
+    hoverTimeout = setTimeout(() => {
+      const selection = window.getSelection();
+      const text = selection?.toString()?.trim();
+      if (!text || text.length < 2 || text.length > 500) return;
+
+      // Don't translate if selection is inside our translation elements
+      const anchorEl = selection.anchorNode?.parentElement;
+      if (anchorEl?.closest(`.${TRANSLATION_CLASS}, [${TRANSLATED_ATTR}]`)) return;
+
+      showHoverTooltip(text, e.clientX, e.clientY);
+    }, 300);
+  });
+
+  // Dismiss tooltip on click outside
+  document.addEventListener('mousedown', (e) => {
+    if (hoverTooltip && !hoverTooltip.contains(e.target)) {
+      dismissHoverTooltip();
+    }
+  });
+}
+
+async function showHoverTooltip(text, x, y) {
+  dismissHoverTooltip();
+
+  // Create tooltip immediately with loading state
+  hoverTooltip = document.createElement('div');
+  hoverTooltip.className = 'bilingual-hover-tooltip';
+
+  hoverTooltip.innerHTML = `
+    <div class="tooltip-source">TRANSLATION</div>
+    <div class="tooltip-text" style="opacity: 0.5;">Translating...</div>
+  `;
+
+  // Position: prefer below cursor, flip if not enough space
+  const tooltipWidth = 320;
+  const left = Math.min(x, window.innerWidth - tooltipWidth - 16);
+  hoverTooltip.style.left = `${Math.max(8, left)}px`;
+
+  if (y + 40 + 100 > window.innerHeight) {
+    hoverTooltip.style.bottom = `${window.innerHeight - y + 8}px`;
+    hoverTooltip.classList.add('arrow-top');
+  } else {
+    hoverTooltip.style.top = `${y + 16}px`;
+  }
+
+  document.body.appendChild(hoverTooltip);
+
+  // Try streaming first, fallback to regular translation
+  try {
+    const tooltipText = hoverTooltip.querySelector('.tooltip-text');
+    const port = chrome.runtime.connect({ name: 'translate-stream' });
+    let fullText = '';
+
+    port.onMessage.addListener((msg) => {
+      if (msg.type === 'chunk') {
+        fullText += msg.text;
+        if (tooltipText) {
+          tooltipText.style.opacity = '1';
+          tooltipText.textContent = fullText;
+        }
+      } else if (msg.type === 'done') {
+        port.disconnect();
+      } else if (msg.type === 'error') {
+        // Fallback to regular translation
+        port.disconnect();
+        fallbackTranslateTooltip(text, tooltipText);
+      }
+    });
+
+    port.onDisconnect.addListener(() => {
+      // If no text was received, fallback
+      if (!fullText && tooltipText) {
+        fallbackTranslateTooltip(text, tooltipText);
+      }
+    });
+
+    port.postMessage({ action: 'translateStream', text });
+  } catch {
+    // Streaming not available, use regular translation
+    const tooltipText = hoverTooltip?.querySelector('.tooltip-text');
+    if (tooltipText) {
+      fallbackTranslateTooltip(text, tooltipText);
+    }
+  }
+}
+
+async function fallbackTranslateTooltip(text, tooltipText) {
+  try {
+    const response = await chrome.runtime.sendMessage({
+      action: 'translate',
+      text,
+    });
+    if (response.error) {
+      tooltipText.textContent = 'Translation failed';
+    } else {
+      tooltipText.style.opacity = '1';
+      tooltipText.textContent = response.translatedText;
+    }
+  } catch {
+    tooltipText.textContent = 'Translation failed';
+  }
+}
+
+function dismissHoverTooltip() {
+  if (hoverTooltip) {
+    hoverTooltip.remove();
+    hoverTooltip = null;
+  }
 }
 
 // Initialize

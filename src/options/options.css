@@ -166,3 +166,279 @@ h1 {
 .save-status.success {
   color: #2e7d32;
 }
+
+/* ---- Site Rules Section ---- */
+.section-desc {
+  font-size: 13px;
+  color: #888;
+  margin-bottom: 16px;
+}
+
+.site-rules-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.site-rules-col {
+  display: flex;
+  flex-direction: column;
+}
+
+.rule-col-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+
+.rule-col-title--allow {
+  color: #4A8B6C;
+}
+
+.rule-col-title--allow svg {
+  color: #4A8B6C;
+}
+
+.rule-col-title--block {
+  color: #C4534A;
+}
+
+.rule-col-title--block svg {
+  color: #C4534A;
+}
+
+.rule-col-desc {
+  font-size: 12px;
+  color: #888;
+  margin-bottom: 10px;
+}
+
+.rule-input-row {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.rule-input {
+  flex: 1;
+  padding: 7px 10px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.rule-input:focus {
+  border-color: #C4841D;
+  box-shadow: 0 0 0 2px rgba(196, 132, 29, 0.12);
+}
+
+.rule-input::placeholder {
+  color: #bbb;
+}
+
+.rule-add-btn {
+  padding: 7px 14px;
+  border: 1px solid rgba(74, 139, 108, 0.3);
+  border-radius: 6px;
+  background: rgba(74, 139, 108, 0.08);
+  color: #4A8B6C;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.rule-add-btn:hover {
+  background: rgba(74, 139, 108, 0.15);
+  border-color: #4A8B6C;
+}
+
+.rule-add-btn--block {
+  color: #C4534A;
+  background: rgba(196, 83, 74, 0.06);
+  border-color: rgba(196, 83, 74, 0.2);
+}
+
+.rule-add-btn--block:hover {
+  background: rgba(196, 83, 74, 0.12);
+  border-color: #C4534A;
+}
+
+.rule-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.rule-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  background: #f9f8f6;
+  border: 1px solid #eee;
+  border-radius: 5px;
+  font-size: 13px;
+  color: #555;
+  animation: ruleSlideIn 0.2s ease;
+}
+
+.rule-item-pattern {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 12px;
+}
+
+.rule-item-delete {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: none;
+  color: #bbb;
+  font-size: 16px;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: all 0.15s;
+  line-height: 1;
+}
+
+.rule-item-delete:hover {
+  color: #C4534A;
+  background: rgba(196, 83, 74, 0.08);
+}
+
+.rule-list-empty {
+  font-size: 12px;
+  color: #bbb;
+  text-align: center;
+  padding: 12px;
+  font-style: italic;
+}
+
+@keyframes ruleSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ---- Site Rules Dark Mode ---- */
+@media (prefers-color-scheme: dark) {
+  body {
+    background: #1a1a1a;
+    color: #e0e0e0;
+  }
+
+  h1 {
+    color: #e0e0e0;
+  }
+
+  .section {
+    background: #2a2a2a;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  }
+
+  .section h2 {
+    color: #e0e0e0;
+  }
+
+  .section-desc {
+    color: #888;
+  }
+
+  .field label {
+    color: #aaa;
+  }
+
+  .field select,
+  .field input[type="text"],
+  .field input[type="password"],
+  .field input[type="url"],
+  .rule-input {
+    background: #333;
+    border-color: #444;
+    color: #e0e0e0;
+  }
+
+  .field select:focus,
+  .field input:focus,
+  .rule-input:focus {
+    border-color: #C4841D;
+    box-shadow: 0 0 0 2px rgba(196, 132, 29, 0.2);
+  }
+
+  .rule-input::placeholder {
+    color: #666;
+  }
+
+  .btn-icon {
+    background: #333;
+    border-color: #444;
+    color: #e0e0e0;
+  }
+
+  .btn-icon:hover {
+    background: #3a3a3a;
+  }
+
+  .btn-secondary {
+    background: #333;
+    color: #e0e0e0;
+    border-color: #444;
+  }
+
+  .btn-secondary:hover:not(:disabled) {
+    background: #3a3a3a;
+  }
+
+  .result-success {
+    background: rgba(74, 139, 108, 0.15);
+    color: #6dbb95;
+  }
+
+  .result-error {
+    background: rgba(196, 83, 74, 0.15);
+    color: #e07070;
+  }
+
+  .rule-item {
+    background: #333;
+    border-color: #444;
+    color: #ccc;
+  }
+
+  .rule-item-delete {
+    color: #666;
+  }
+
+  .rule-item-delete:hover {
+    color: #e07070;
+    background: rgba(196, 83, 74, 0.15);
+  }
+
+  .rule-list-empty {
+    color: #555;
+  }
+}

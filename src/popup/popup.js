@@ -314,5 +314,77 @@ els.provider?.addEventListener('change', async () => {
   }
 });
 
+// ========================================
+// Site Rule Quick Toggle
+// ========================================
+
+const siteRuleIcon = document.getElementById('siteRuleIcon');
+const siteRuleLabel = document.getElementById('siteRuleLabel');
+const siteAutoTranslate = document.getElementById('siteAutoTranslate');
+const siteNeverTranslate = document.getElementById('siteNeverTranslate');
+
+async function loadSiteRuleStatus() {
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab?.url) return;
+
+    const hostname = new URL(tab.url).hostname;
+    if (!hostname) return;
+
+    const { rule } = await chrome.runtime.sendMessage({
+      action: 'checkSiteRule',
+      hostname,
+    });
+
+    if (rule === 'whitelist') {
+      if (siteRuleIcon) siteRuleIcon.style.color = '#4A8B6C';
+      if (siteRuleLabel) siteRuleLabel.textContent = 'Auto-translate this site';
+      siteAutoTranslate?.classList.add('active');
+      siteNeverTranslate?.classList.remove('active');
+    } else if (rule === 'blacklist') {
+      if (siteRuleIcon) siteRuleIcon.style.color = '#C4534A';
+      if (siteRuleLabel) siteRuleLabel.textContent = 'Never translate this site';
+      siteAutoTranslate?.classList.remove('active');
+      siteNeverTranslate?.classList.add('active');
+    } else {
+      if (siteRuleIcon) siteRuleIcon.style.color = '#999';
+      if (siteRuleLabel) siteRuleLabel.textContent = 'No rule for this site';
+      siteAutoTranslate?.classList.remove('active');
+      siteNeverTranslate?.classList.remove('active');
+    }
+  } catch { /* ignore for non-http pages */ }
+}
+
+siteAutoTranslate?.addEventListener('click', async () => {
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab?.url) return;
+    const hostname = new URL(tab.url).hostname;
+    const { rule } = await chrome.runtime.sendMessage({ action: 'checkSiteRule', hostname });
+    if (rule === 'whitelist') {
+      await chrome.runtime.sendMessage({ action: 'removeSiteRule', list: 'whitelist', pattern: hostname });
+    } else {
+      await chrome.runtime.sendMessage({ action: 'addSiteRule', list: 'whitelist', pattern: hostname });
+    }
+    loadSiteRuleStatus();
+  } catch { /* ignore */ }
+});
+
+siteNeverTranslate?.addEventListener('click', async () => {
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab?.url) return;
+    const hostname = new URL(tab.url).hostname;
+    const { rule } = await chrome.runtime.sendMessage({ action: 'checkSiteRule', hostname });
+    if (rule === 'blacklist') {
+      await chrome.runtime.sendMessage({ action: 'removeSiteRule', list: 'blacklist', pattern: hostname });
+    } else {
+      await chrome.runtime.sendMessage({ action: 'addSiteRule', list: 'blacklist', pattern: hostname });
+    }
+    loadSiteRuleStatus();
+  } catch { /* ignore */ }
+});
+
 // Initialize
 loadSettings();
+loadSiteRuleStatus();

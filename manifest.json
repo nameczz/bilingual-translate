@@ -43,5 +43,19 @@
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
+  },
+  "commands": {
+    "translate-page": {
+      "suggested_key": { "default": "Alt+T", "mac": "Alt+T" },
+      "description": "Translate this page"
+    },
+    "toggle-translations": {
+      "suggested_key": { "default": "Alt+Y", "mac": "Alt+Y" },
+      "description": "Toggle translation visibility"
+    },
+    "translate-selection": {
+      "suggested_key": { "default": "Alt+D", "mac": "Alt+D" },
+      "description": "Translate selected text"
+    }
   }
 }

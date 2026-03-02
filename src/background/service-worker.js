@@ -10,9 +10,9 @@ import { DeepSeekProvider } from '../services/deepseek-provider.js';
 import { QwenProvider } from '../services/qwen-provider.js';
 import { DoubaoProvider } from '../services/doubao-provider.js';
 import { registerProvider, getProvider } from '../services/provider.js';
-import { translateText, translateBatch } from '../services/translator.js';
+import { translateText, translateBatch, translateTextStream } from '../services/translator.js';
 import { cleanCache, clearAllCache } from '../services/cache.js';
-import { getSettings, saveSettings, saveApiKey, getApiKey, hasApiKey, removeApiKey } from '../utils/storage.js';
+import { getSettings, saveSettings, saveApiKey, getApiKey, hasApiKey, removeApiKey, getSiteRules, addSiteRule, removeSiteRule, checkSiteRule } from '../utils/storage.js';
 
 // Register providers
 registerProvider('claude', new ClaudeProvider());
@@ -125,6 +125,23 @@ async function handleMessage(message, sender) {
       return result;
     }
 
+    case 'getSiteRules': {
+      return await getSiteRules();
+    }
+
+    case 'addSiteRule': {
+      return await addSiteRule(message.list, message.pattern);
+    }
+
+    case 'removeSiteRule': {
+      return await removeSiteRule(message.list, message.pattern);
+    }
+
+    case 'checkSiteRule': {
+      const rule = await checkSiteRule(message.hostname);
+      return { rule };
+    }
+
     default:
       throw new Error(`Unknown action: ${message.action}`);
   }
@@ -136,4 +153,78 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === 'cleanCache') {
     cleanCache();
   }
+});
+
+// Keyboard shortcut handler
+chrome.commands.onCommand.addListener(async (command) => {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (!tab) return;
+
+  switch (command) {
+    case 'translate-page':
+      chrome.tabs.sendMessage(tab.id, { action: 'translatePage' });
+      break;
+    case 'toggle-translations':
+      chrome.tabs.sendMessage(tab.id, { action: 'toggleTranslations' });
+      break;
+    case 'translate-selection': {
+      try {
+        const response = await chrome.tabs.sendMessage(tab.id, { action: 'getSelection' });
+        if (response?.text) {
+          chrome.tabs.sendMessage(tab.id, { action: 'translateSelection', text: response.text });
+        }
+      } catch { /* content script not loaded */ }
+      break;
+    }
+  }
+});
+
+// Streaming translation via port-based messaging
+chrome.runtime.onConnect.addListener((port) => {
+  if (port.name !== 'translate-stream') return;
+
+  port.onMessage.addListener(async (message) => {
+    if (message.action !== 'translateStream') return;
+
+    try {
+      const { stream, provider } = await translateTextStream(
+        message.text,
+        message.targetLang,
+        message.sourceLang
+      );
+
+      const reader = stream.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          const data = line.slice(6);
+          if (data === '[DONE]') continue;
+
+          try {
+            const parsed = JSON.parse(data);
+            if (parsed.type === 'content_block_delta' && parsed.delta?.text) {
+              port.postMessage({ type: 'chunk', text: parsed.delta.text });
+            }
+            if (parsed.choices?.[0]?.delta?.content) {
+              port.postMessage({ type: 'chunk', text: parsed.choices[0].delta.content });
+            }
+          } catch { /* skip unparseable lines */ }
+        }
+      }
+
+      port.postMessage({ type: 'done' });
+    } catch (err) {
+      port.postMessage({ type: 'error', error: err.message });
+    }
+  });
 });

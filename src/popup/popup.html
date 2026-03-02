@@ -39,6 +39,13 @@
       <span class="status-text">Ready to translate</span>
     </div>
 
+    <!-- Shortcut Hints -->
+    <div class="shortcut-hints" id="shortcutHints">
+      <kbd>Alt+T</kbd> Translate page <span class="hint-sep">|</span>
+      <kbd>Alt+Y</kbd> Toggle <span class="hint-sep">|</span>
+      <kbd>Alt+D</kbd> Selection
+    </div>
+
     <!-- Tab Navigation -->
     <nav class="tab-nav">
       <button class="tab-btn active" data-tab="general">General</button>
@@ -48,6 +55,24 @@
 
     <!-- Tab: General Settings -->
     <section class="tab-panel active" id="tab-general">
+      <!-- Site Rule Quick Toggle -->
+      <div class="site-rule-toggle" id="siteRuleToggle">
+        <div class="site-rule-status">
+          <span class="site-rule-icon" id="siteRuleIcon">&#9679;</span>
+          <span class="site-rule-label" id="siteRuleLabel">No rule for this site</span>
+        </div>
+        <div class="site-rule-actions">
+          <button class="site-rule-btn site-rule-btn--allow" id="siteAutoTranslate" title="Auto-translate this site">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20 6L9 17l-5-5"/></svg>
+            Auto
+          </button>
+          <button class="site-rule-btn site-rule-btn--block" id="siteNeverTranslate" title="Never translate this site">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            Never
+          </button>
+        </div>
+      </div>
+
       <div class="setting-group">
         <label class="setting-label">Source Language</label>
         <div class="select-wrapper">

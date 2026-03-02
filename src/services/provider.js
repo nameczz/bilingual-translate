@@ -70,6 +70,16 @@ export class TranslationProvider {
   }
 
   /**
+   * Translate text with streaming support.
+   * Returns a ReadableStream of SSE data.
+   * @param {TranslationRequest} request
+   * @returns {Promise<ReadableStream>}
+   */
+  async translateStream(request) {
+    throw new Error(`${this.name} does not support streaming.`);
+  }
+
+  /**
    * Validate the API key.
    * @param {string} apiKey
    * @returns {Promise<{valid: boolean, error?: string}>}

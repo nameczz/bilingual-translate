@@ -45,6 +45,35 @@ export async function translateText(text, targetLang, sourceLang) {
 }
 
 /**
+ * Translate text with streaming support.
+ * Returns the raw ReadableStream from the provider.
+ * @param {string} text
+ * @param {string} [targetLang]
+ * @param {string} [sourceLang]
+ * @returns {Promise<{stream: ReadableStream, provider: string}>}
+ */
+export async function translateTextStream(text, targetLang, sourceLang) {
+  const settings = await getSettings();
+  targetLang = targetLang || settings.targetLang;
+  sourceLang = sourceLang || settings.sourceLang;
+
+  const provider = getProvider(settings.provider);
+  if (!provider) {
+    throw new Error(`Translation provider "${settings.provider}" not found.`);
+  }
+
+  const apiKey = await getApiKey(settings.provider);
+  if (!apiKey) {
+    throw new Error(`No API key configured for ${provider.getDisplayName()}.`);
+  }
+  provider.setApiKey(apiKey);
+  if (settings.model) provider.setModel(settings.model);
+
+  const stream = await provider.translateStream({ text, sourceLang, targetLang });
+  return { stream, provider: settings.provider };
+}
+
+/**
  * Translate multiple texts in batch.
  * @param {string[]} texts
  * @param {string} [targetLang]

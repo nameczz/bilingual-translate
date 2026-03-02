@@ -731,3 +731,136 @@ body::before {
   opacity: 1;
   transform: translateX(-50%) translateY(0);
 }
+
+/* ---- Shortcut Hints ---- */
+.shortcut-hints {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 5px 18px;
+  font-size: 10.5px;
+  color: var(--text-muted);
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+  letter-spacing: 0.01em;
+  flex-wrap: wrap;
+}
+
+.shortcut-hints kbd {
+  display: inline-block;
+  padding: 1px 5px;
+  font-family: var(--font-body);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  line-height: 1.4;
+}
+
+.hint-sep {
+  color: var(--border);
+  margin: 0 2px;
+}
+
+/* ---- Site Rule Quick Toggle ---- */
+.site-rule-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  margin-bottom: 16px;
+  background: var(--surface);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+}
+
+.site-rule-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  color: var(--text-secondary);
+  font-weight: 500;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.site-rule-icon {
+  font-size: 8px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.site-rule-icon.allow {
+  color: var(--success);
+}
+
+.site-rule-icon.block {
+  color: var(--error);
+}
+
+.site-rule-label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.site-rule-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.site-rule-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  font-family: var(--font-body);
+  font-size: 10.5px;
+  font-weight: 500;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+  cursor: pointer;
+  transition: all var(--transition);
+  white-space: nowrap;
+}
+
+.site-rule-btn:hover {
+  border-color: var(--text-muted);
+}
+
+.site-rule-btn--allow {
+  color: var(--success);
+}
+
+.site-rule-btn--allow:hover {
+  background: rgba(74, 139, 108, 0.08);
+  border-color: var(--success);
+}
+
+.site-rule-btn--allow.active {
+  background: var(--success);
+  color: white;
+  border-color: var(--success);
+}
+
+.site-rule-btn--block {
+  color: var(--error);
+}
+
+.site-rule-btn--block:hover {
+  background: rgba(196, 83, 74, 0.06);
+  border-color: var(--error);
+}
+
+.site-rule-btn--block.active {
+  background: var(--error);
+  color: white;
+  border-color: var(--error);
+}

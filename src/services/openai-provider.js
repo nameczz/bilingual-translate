@@ -99,6 +99,53 @@ Rules:
   }
 
   /**
+   * Translate text using streaming SSE.
+   * @param {object} params - { text, sourceLang, targetLang }
+   * @returns {ReadableStream} A stream that yields text chunks
+   */
+  async translateStream({ text, sourceLang, targetLang }) {
+    if (!this.apiKey) {
+      throw new Error('API key not configured.');
+    }
+
+    const targetName = getLanguageName(targetLang);
+    const sourceInstruction = sourceLang === 'auto'
+      ? 'Detect the source language and'
+      : `The source language is ${getLanguageName(sourceLang)}.`;
+
+    const systemPrompt = `You are a professional translator. ${sourceInstruction} Translate the following text to ${targetName}.
+Rules:
+- Output ONLY the translated text, nothing else
+- Preserve the original formatting (line breaks, spacing)
+- Keep proper nouns, brand names, and technical terms as-is when appropriate
+- Maintain the tone and style of the original text`;
+
+    const response = await fetch(OPENAI_API_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${this.apiKey}`,
+      },
+      body: JSON.stringify({
+        model: this.model || MODEL,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: text },
+        ],
+        temperature: TEMPERATURE,
+        stream: true,
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.error?.message || `HTTP ${response.status}`);
+    }
+
+    return response.body;
+  }
+
+  /**
    * Validate an API key by making a minimal API call.
    */
   async validateKey(apiKey) {

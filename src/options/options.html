@@ -75,6 +75,45 @@
       </div>
     </section>
 
+    <section class="section site-rules-section">
+      <h2>Site Rules</h2>
+      <p class="section-desc">Control which sites are automatically translated or never translated.</p>
+
+      <div class="site-rules-grid">
+        <!-- Whitelist -->
+        <div class="site-rules-col">
+          <h3 class="rule-col-title rule-col-title--allow">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20 6L9 17l-5-5"/></svg>
+            Whitelist
+          </h3>
+          <p class="rule-col-desc">Auto-translate these sites</p>
+          <div class="rule-input-row">
+            <input type="text" id="whitelistInput" class="rule-input" placeholder="e.g., *.github.com">
+            <button class="rule-add-btn" id="addWhitelist">Add</button>
+          </div>
+          <ul class="rule-list" id="whitelistRules">
+            <!-- JS will populate -->
+          </ul>
+        </div>
+
+        <!-- Blacklist -->
+        <div class="site-rules-col">
+          <h3 class="rule-col-title rule-col-title--block">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            Blacklist
+          </h3>
+          <p class="rule-col-desc">Never translate these sites</p>
+          <div class="rule-input-row">
+            <input type="text" id="blacklistInput" class="rule-input" placeholder="e.g., *.example.com">
+            <button class="rule-add-btn rule-add-btn--block" id="addBlacklist">Add</button>
+          </div>
+          <ul class="rule-list" id="blacklistRules">
+            <!-- JS will populate -->
+          </ul>
+        </div>
+      </div>
+    </section>
+
     <section class="section">
       <h2>Cache</h2>
       <p>Translations are cached locally to reduce API calls.</p>
