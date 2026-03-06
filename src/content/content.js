@@ -18,9 +18,18 @@ let fab = null;
 let mutationObserver = null;
 let observerTranslateTimer = null;
 let isAutoTranslating = false; // true when MutationObserver-driven translation is active
+let wasStopped = false; // true after manual stop — allows resuming translation on next click
 
 const MAX_CONCURRENCY = 3; // parallel streaming connections
-const MERGE_CHAR_LIMIT = 300; // merge short paragraphs below this total
+
+let translateAbort = null;  // AbortController for stopping translation
+let activePorts = new Set(); // track open streaming ports for cleanup
+
+let intersectionObserver = null;
+const paragraphMap = new WeakMap();  // blockEl -> paragraph (for IO lookup)
+let lazyQueue = [];
+let activeLazyCount = 0;
+let pendingMutationRoots = null;
 
 /**
  * Initialize content script.
@@ -80,8 +89,13 @@ function setupMessageListener() {
         sendResponse({ success: true, hidden: translationsHidden });
         return false;
 
+      case 'stopTranslation':
+        stopTranslation();
+        sendResponse({ success: true });
+        return false;
+
       case 'getTranslationStatus':
-        sendResponse({ isTranslating, hasTranslations: hasTranslations(), translationsHidden });
+        sendResponse({ isTranslating: isTranslating || isLazyTranslating(), hasTranslations: hasTranslations(), translationsHidden });
         return false;
 
       case 'settingsUpdated':
@@ -163,12 +177,16 @@ async function handleFABClick(e) {
     return;
   }
 
-  if (isTranslating) return;
+  if (isTranslating || isLazyTranslating()) {
+    stopTranslation();
+    return;
+  }
 
-  if (hasTranslations()) {
+  if (hasTranslations() && !wasStopped) {
     // Toggle visibility instead of removing
     toggleTranslations();
   } else {
+    wasStopped = false;
     try {
       await translatePage();
     } catch (err) {
@@ -198,7 +216,7 @@ function updateFABState(state) {
       break;
     case 'loading':
       fab.classList.add('loading');
-      updateFABTooltip('Translating...');
+      updateFABTooltip('Translating... (click to stop)');
       break;
     case 'error':
       fab.classList.add('error');
@@ -370,28 +388,29 @@ function startObservingDOM() {
   mutationObserver = new MutationObserver((mutations) => {
     if (translationsHidden || !isAutoTranslating) return;
 
-    // Check if any mutation added meaningful nodes
-    let hasNewContent = false;
+    // Collect new DOM root nodes instead of just flagging hasNewContent
+    if (!pendingMutationRoots) pendingMutationRoots = new Set();
+
     for (const mutation of mutations) {
       if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
         for (const node of mutation.addedNodes) {
           if (node.nodeType === Node.ELEMENT_NODE &&
               !node.classList?.contains(TRANSLATION_CLASS) &&
               !node.closest?.(`#${FAB_ID}, #${PROGRESS_BAR_ID}, .bilingual-hover-tooltip, .bilingual-popup`)) {
-            hasNewContent = true;
-            break;
+            pendingMutationRoots.add(node);
           }
         }
       }
-      if (hasNewContent) break;
     }
 
-    if (!hasNewContent) return;
+    if (pendingMutationRoots.size === 0) return;
 
-    // Debounce: wait for DOM to settle before translating new content
+    // Debounce: wait for DOM to settle, then translate only new subtrees
     clearTimeout(observerTranslateTimer);
     observerTranslateTimer = setTimeout(() => {
-      translateNewContent();
+      const roots = pendingMutationRoots;
+      pendingMutationRoots = null;
+      translateNewContent(roots);
     }, 800);
   });
 
@@ -416,24 +435,51 @@ function stopObservingDOM() {
 /**
  * Translate only newly added (untranslated) content on the page.
  * Called by the MutationObserver when new DOM nodes appear.
+ * @param {Set<Element>} [roots] - specific DOM subtrees to scan; falls back to document.body
  */
-async function translateNewContent() {
+async function translateNewContent(roots) {
   if (isTranslating) return;
 
-  const rawParagraphs = extractParagraphs(document.body);
+  let rawParagraphs = [];
+
+  if (roots && roots.size > 0) {
+    // Only traverse the newly added subtrees — not the whole document
+    for (const root of roots) {
+      if (!root.isConnected) continue; // node may have been removed already
+      const paras = extractParagraphs(root);
+      rawParagraphs.push(...paras);
+    }
+  } else {
+    // Fallback for SPA navigation or cases where roots aren't available
+    rawParagraphs = extractParagraphs(document.body);
+  }
+
   if (rawParagraphs.length === 0) return;
 
   isTranslating = true;
+  translateAbort = new AbortController();
+  const signal = translateAbort.signal;
 
   try {
-    const paragraphs = mergeParagraphs(rawParagraphs);
-    await runWithConcurrency(
-      paragraphs,
-      MAX_CONCURRENCY,
-      (para) => translateParagraphStreaming(para),
-    );
+    const { eager, lazy } = categorizeAndSort(rawParagraphs);
+
+    if (eager.length > 0) {
+      await runWithConcurrency(
+        eager,
+        MAX_CONCURRENCY,
+        (para) => translateParagraphStreaming(para),
+        undefined,
+        signal,
+      );
+    }
+
+    if (signal.aborted) return;
+
+    setupLazyTranslation(lazy);
   } finally {
-    isTranslating = false;
+    if (!signal.aborted) {
+      isTranslating = false;
+    }
   }
 }
 
@@ -526,10 +572,16 @@ function extractParagraphs(root) {
  */
 function translateParagraphStreaming(paragraph) {
   return new Promise((resolve, reject) => {
+    // If translation was aborted, resolve immediately
+    if (translateAbort?.signal.aborted) {
+      resolve();
+      return;
+    }
+
     const { nodes } = paragraph;
     const fullText = nodes.map(n => n.text).join(' ');
 
-    // Create translation element on the first node, streaming mode
+    // Create translation element
     const firstNode = nodes[0].node;
     const parent = firstNode.parentElement;
     if (!parent || parent.hasAttribute(TRANSLATED_ATTR)) {
@@ -544,21 +596,27 @@ function translateParagraphStreaming(paragraph) {
     translationEl.className = TRANSLATION_CLASS;
     translationEl.classList.add('streaming');
 
-    const style = settings?.displayStyle || 'underline';
-    if (style === 'side') translationEl.classList.add('bilingual-side');
+    const isTranslationOnly = settings?.translationOnly === true;
+    const isInline = !isTranslationOnly && shouldDisplayInline(blockEl, fullText);
+    if (isInline) translationEl.classList.add('bilingual-side');
+    if (isTranslationOnly) translationEl.classList.add('translation-only');
     if (settings?.colorTranslation === false) translationEl.classList.add('no-color');
     if (settings?.translationFontSize && settings.translationFontSize !== 90) {
       translationEl.style.fontSize = (settings.translationFontSize / 100) + 'em';
     }
 
-    // Insert after the block element
-    if (blockEl.nextSibling) {
+    if (isInline) {
+      blockEl.appendChild(translationEl);
+    } else if (blockEl.nextSibling) {
       blockEl.parentNode.insertBefore(translationEl, blockEl.nextSibling);
     } else {
       blockEl.parentNode.appendChild(translationEl);
     }
 
-    // Mark all nodes in this paragraph as translated
+    if (isTranslationOnly) {
+      blockEl.setAttribute('data-bilingual-original-hidden', 'true');
+    }
+
     for (const item of nodes) {
       const p = item.node.parentElement;
       if (p && p !== blockEl) p.setAttribute(TRANSLATED_ATTR, 'true');
@@ -566,12 +624,14 @@ function translateParagraphStreaming(paragraph) {
 
     // Stream translation
     const port = chrome.runtime.connect({ name: 'translate-stream' });
+    activePorts.add(port);
     let accumulated = '';
     let settled = false;
 
     const finish = () => {
       if (settled) return;
       settled = true;
+      activePorts.delete(port);
       translationEl.classList.remove('streaming');
       translationEl.classList.add('stream-done');
       resolve();
@@ -585,11 +645,12 @@ function translateParagraphStreaming(paragraph) {
         port.disconnect();
         finish();
       } else if (msg.type === 'error') {
+        console.error('[Bilingual Translate] Stream error:', msg.error || msg);
         port.disconnect();
         // Fallback: use non-streaming
         translateParagraphFallback(paragraph, translationEl)
           .then(finish)
-          .catch(() => { translationEl.textContent = 'Translation failed'; finish(); });
+          .catch((err) => { console.error('[Bilingual Translate] Fallback also failed:', err); translationEl.textContent = 'Translation failed'; finish(); });
       }
     });
 
@@ -598,7 +659,7 @@ function translateParagraphStreaming(paragraph) {
         // Port disconnected without data — fallback
         translateParagraphFallback(paragraph, translationEl)
           .then(finish)
-          .catch(() => { translationEl.textContent = 'Translation failed'; finish(); });
+          .catch((err) => { console.error('[Bilingual Translate] Fallback failed after disconnect:', err); translationEl.textContent = 'Translation failed'; finish(); });
       } else {
         finish();
       }
@@ -623,41 +684,221 @@ async function translateParagraphFallback(paragraph, translationEl) {
   translationEl.textContent = response.translatedText;
 }
 
+const HEADING_TAGS = new Set(['H1', 'H2', 'H3', 'H4', 'H5', 'H6']);
+const INLINE_CHAR_LIMIT = 60;
+
 /**
- * Merge adjacent short paragraphs into larger groups to reduce API calls.
- * Long paragraphs are kept standalone for streaming benefit.
+ * Determine if translation should display inline (side-by-side) or as a block below.
+ * Headings and short single-line text → inline.
+ * Paragraphs and long text → block below.
  */
-function mergeParagraphs(paragraphs) {
-  const merged = [];
-  let accumGroup = null;
-  let accumLen = 0;
+function shouldDisplayInline(blockEl, text) {
+  if (HEADING_TAGS.has(blockEl.tagName)) return true;
+  if (text.length <= INLINE_CHAR_LIMIT && !text.includes('\n')) return true;
+  return false;
+}
 
-  for (const para of paragraphs) {
-    const paraLen = para.nodes.reduce((s, n) => s + n.text.length, 0);
+/**
+ * Find the nearest container ancestor of an element.
+ * Used to prevent merging paragraphs from different semantic containers
+ * (e.g., different tweets, different comments).
+ */
+function getContainerAncestor(el) {
+  const CONTAINER_TAGS = new Set(['ARTICLE', 'SECTION', 'MAIN', 'ASIDE', 'NAV', 'HEADER', 'FOOTER']);
+  let node = el;
+  while (node && node !== document.body) {
+    if (CONTAINER_TAGS.has(node.tagName) || node.getAttribute('role')) return node;
+    node = node.parentElement;
+  }
+  return document.body;
+}
 
-    if (paraLen >= MERGE_CHAR_LIMIT) {
-      // Flush any accumulated short group first
-      if (accumGroup) { merged.push(accumGroup); accumGroup = null; accumLen = 0; }
-      merged.push(para);
+/**
+ * Determine translation priority for a block element.
+ * HIGH (0) = main content — translated first.
+ * MEDIUM (1) = default.
+ * LOW (2) = chrome/nav — translated last.
+ */
+function getTranslationPriority(blockEl) {
+  const HIGH_TAGS = new Set(['ARTICLE', 'MAIN']);
+  const LOW_TAGS = new Set(['NAV', 'ASIDE', 'FOOTER']);
+
+  let el = blockEl;
+  while (el && el !== document.body) {
+    if (HIGH_TAGS.has(el.tagName) || el.getAttribute('role') === 'main') return 0;
+    if (LOW_TAGS.has(el.tagName) ||
+        el.getAttribute('role') === 'navigation' ||
+        el.getAttribute('role') === 'menu') return 2;
+    el = el.parentElement;
+  }
+  return 1;
+}
+
+/**
+ * Categorize paragraphs by viewport proximity and semantic priority.
+ * Returns { eager: [...], lazy: [...] }
+ *  - eager = in viewport (zone 0) + within 1 screen buffer (zone 1) — translated immediately
+ *  - lazy  = far from viewport (zone 2) — translated on scroll via IntersectionObserver
+ * Within each group, sorted by: zone → priority → distance from viewport center.
+ */
+function categorizeAndSort(paragraphs) {
+  const vh = window.innerHeight;
+  const vpTop = window.scrollY;
+  const vpBottom = vpTop + vh;
+  const vpCenter = vpTop + vh / 2;
+
+  const scored = paragraphs.map((para, i) => {
+    const rect = para.blockEl.getBoundingClientRect();
+    const absTop = rect.top + window.scrollY;
+    const absBottom = rect.bottom + window.scrollY;
+    const elCenter = (absTop + absBottom) / 2;
+
+    let zone;
+    if (absBottom >= vpTop && absTop <= vpBottom) {
+      zone = 0; // in viewport
+    } else if (absBottom >= vpTop - vh && absTop <= vpBottom + vh) {
+      zone = 1; // within 1-screen buffer
     } else {
-      if (accumGroup && accumLen + paraLen > MERGE_CHAR_LIMIT) {
-        // Current accumulation is full, flush it
-        merged.push(accumGroup);
-        accumGroup = null;
-        accumLen = 0;
-      }
-      if (!accumGroup) {
-        accumGroup = { blockEl: para.blockEl, nodes: [...para.nodes], _merged: [para] };
-        accumLen = paraLen;
-      } else {
-        accumGroup.nodes.push(...para.nodes);
-        accumGroup._merged.push(para);
-        accumLen += paraLen;
-      }
+      zone = 2; // far away
+    }
+
+    return {
+      para,
+      zone,
+      priority: getTranslationPriority(para.blockEl),
+      distance: Math.abs(elCenter - vpCenter),
+      order: i,
+    };
+  });
+
+  // Sort: priority first (content before nav), then zone, then distance
+  scored.sort((a, b) => a.priority - b.priority || a.zone - b.zone || a.distance - b.distance);
+
+  const eager = [];
+  const lazy = [];
+  for (const item of scored) {
+    // High-priority content (article/main) always eager, even if off-screen
+    if (item.zone <= 1 || item.priority === 0) {
+      eager.push(item.para);
+    } else {
+      lazy.push(item.para);
     }
   }
-  if (accumGroup) merged.push(accumGroup);
-  return merged;
+
+  return { eager, lazy };
+}
+
+// ========================================
+// Lazy (Viewport-Driven) Translation
+// ========================================
+
+/**
+ * Set up IntersectionObserver-based lazy translation for off-screen paragraphs.
+ * When a lazy paragraph scrolls into view (with 300px margin), it's queued for translation.
+ */
+function setupLazyTranslation(paragraphs) {
+  if (paragraphs.length === 0) return;
+
+  cleanupLazyTranslation();
+
+  // Register each paragraph's blockEl in the WeakMap for IO callback lookup
+  for (const para of paragraphs) {
+    paragraphMap.set(para.blockEl, para);
+  }
+
+  intersectionObserver = new IntersectionObserver((entries) => {
+    for (const entry of entries) {
+      if (!entry.isIntersecting) continue;
+      const para = paragraphMap.get(entry.target);
+      if (!para) continue;
+
+      // Stop observing — translate only once
+      intersectionObserver.unobserve(entry.target);
+      paragraphMap.delete(entry.target);
+
+      // Add to lazy queue and kick processing
+      lazyQueue.push(para);
+      processLazyQueue();
+    }
+  }, {
+    rootMargin: '300px',
+  });
+
+  for (const para of paragraphs) {
+    intersectionObserver.observe(para.blockEl);
+  }
+}
+
+/**
+ * Self-driving queue processor for lazy paragraphs.
+ * Translates up to MAX_CONCURRENCY paragraphs in parallel;
+ * as each finishes, the next one is pulled from the queue automatically.
+ */
+function processLazyQueue() {
+  while (activeLazyCount < MAX_CONCURRENCY && lazyQueue.length > 0) {
+    const para = lazyQueue.shift();
+    activeLazyCount++;
+
+    // Show loading state when lazy translation is active
+    if (activeLazyCount === 1) updateFABState('loading');
+
+    translateParagraphStreaming(para)
+      .catch(err => console.error('[Bilingual Translate] Lazy paragraph error:', err))
+      .finally(() => {
+        activeLazyCount--;
+        // Restore active state when all lazy work is done
+        if (activeLazyCount === 0 && lazyQueue.length === 0) {
+          updateFABState('active');
+        }
+        processLazyQueue();
+      });
+  }
+}
+
+/**
+ * Check if lazy translation is currently active.
+ */
+function isLazyTranslating() {
+  return activeLazyCount > 0 || lazyQueue.length > 0 || intersectionObserver !== null;
+}
+
+/**
+ * Clean up lazy translation state: disconnect IO, clear queue.
+ */
+function cleanupLazyTranslation() {
+  if (intersectionObserver) {
+    intersectionObserver.disconnect();
+    intersectionObserver = null;
+  }
+  lazyQueue = [];
+  activeLazyCount = 0;
+}
+
+/**
+ * Stop all in-progress translation (eager + lazy + streaming).
+ * Already-completed translations are preserved on the page.
+ */
+function stopTranslation() {
+  // 1. Trigger abort signal — runWithConcurrency workers stop taking new tasks
+  if (translateAbort) {
+    translateAbort.abort();
+    translateAbort = null;
+  }
+
+  // 2. Disconnect all open streaming ports
+  for (const port of activePorts) {
+    try { port.disconnect(); } catch {}
+  }
+  activePorts.clear();
+
+  // 3. Clean up lazy translation queue
+  cleanupLazyTranslation();
+
+  // 4. Reset state
+  isTranslating = false;
+  wasStopped = true;
+  hideProgressBar();
+  updateFABState('idle');
 }
 
 /**
@@ -667,12 +908,13 @@ function mergeParagraphs(paragraphs) {
  * @param {function} fn - async (item, index) => void
  * @param {function} [onProgress] - (completed) => void
  */
-async function runWithConcurrency(items, concurrency, fn, onProgress) {
+async function runWithConcurrency(items, concurrency, fn, onProgress, signal) {
   let next = 0;
   let completed = 0;
 
   async function worker() {
     while (next < items.length) {
+      if (signal?.aborted) return;
       const idx = next++;
       try {
         await fn(items[idx], idx);
@@ -697,6 +939,8 @@ async function runWithConcurrency(items, concurrency, fn, onProgress) {
 async function translatePage() {
   if (isTranslating) return;
   isTranslating = true;
+  translateAbort = new AbortController();
+  const signal = translateAbort.signal;
   translationsHidden = false;
   updateFABState('loading');
 
@@ -707,19 +951,30 @@ async function translatePage() {
       return;
     }
 
-    const paragraphs = mergeParagraphs(rawParagraphs);
+    const { eager, lazy } = categorizeAndSort(rawParagraphs);
 
-    showProgressBar();
-    updateProgressBar(0, paragraphs.length);
+    // Progress bar tracks only eager (viewport) content for fast perceived completion
+    if (eager.length > 0) {
+      showProgressBar();
+      updateProgressBar(0, eager.length);
 
-    await runWithConcurrency(
-      paragraphs,
-      MAX_CONCURRENCY,
-      (para) => translateParagraphStreaming(para),
-      (done) => updateProgressBar(done, paragraphs.length),
-    );
+      await runWithConcurrency(
+        eager,
+        MAX_CONCURRENCY,
+        (para) => translateParagraphStreaming(para),
+        (done) => updateProgressBar(done, eager.length),
+        signal,
+      );
+    }
+
+    // If aborted during eager phase, don't continue to lazy
+    if (signal.aborted) return;
+
+    // Off-screen content is translated lazily as user scrolls
+    setupLazyTranslation(lazy);
 
     hideProgressBar();
+    wasStopped = false;
     updateFABState(hasTranslations() ? 'active' : 'idle');
 
     // Start watching for dynamically loaded content (infinite scroll, SPA, etc.)
@@ -727,7 +982,9 @@ async function translatePage() {
       startObservingDOM();
     }
   } finally {
-    isTranslating = false;
+    if (!signal.aborted) {
+      isTranslating = false;
+    }
   }
 }
 
@@ -805,32 +1062,36 @@ function insertTranslation(textNode, translatedText) {
   const translationEl = document.createElement('span');
   translationEl.className = TRANSLATION_CLASS;
 
-  // Apply display style setting
-  const style = settings?.displayStyle || 'underline';
-  if (style === 'side') {
-    translationEl.classList.add('bilingual-side');
-  }
+  const isTranslationOnly = settings?.translationOnly === true;
+  const text = textNode.textContent.trim();
+  const isInline = !isTranslationOnly && shouldDisplayInline(parent, text);
+  if (isInline) translationEl.classList.add('bilingual-side');
+  if (isTranslationOnly) translationEl.classList.add('translation-only');
 
-  // Apply settings-based classes
   if (settings?.colorTranslation === false) {
     translationEl.classList.add('no-color');
   }
   if (settings?.smoothAnimations === false) {
     translationEl.classList.add('no-anim');
   }
-
-  // Apply custom font size
   if (settings?.translationFontSize && settings.translationFontSize !== 90) {
     translationEl.style.fontSize = (settings.translationFontSize / 100) + 'em';
   }
 
   translationEl.textContent = translatedText;
 
-  // Insert after the parent element or at the end of parent
-  if (parent.nextSibling) {
+  // Inline → append inside parent; block → insert after parent
+  if (isInline) {
+    parent.appendChild(translationEl);
+  } else if (parent.nextSibling) {
     parent.parentNode.insertBefore(translationEl, parent.nextSibling);
   } else {
     parent.parentNode.appendChild(translationEl);
+  }
+
+  // Hide original in translation-only mode
+  if (isTranslationOnly) {
+    parent.setAttribute('data-bilingual-original-hidden', 'true');
   }
 }
 
@@ -838,10 +1099,26 @@ function insertTranslation(textNode, translatedText) {
  * Remove all translations from the page.
  */
 function removeAllTranslations() {
+  // Stop any in-progress translation first
+  if (translateAbort) {
+    translateAbort.abort();
+    translateAbort = null;
+  }
+  for (const port of activePorts) {
+    try { port.disconnect(); } catch {}
+  }
+  activePorts.clear();
+  isTranslating = false;
+
   stopObservingDOM();
+  cleanupLazyTranslation();
   document.querySelectorAll(`.${TRANSLATION_CLASS}`).forEach(el => el.remove());
   document.querySelectorAll(`[${TRANSLATED_ATTR}]`).forEach(el => {
     el.removeAttribute(TRANSLATED_ATTR);
+  });
+  // Restore hidden originals from translation-only mode
+  document.querySelectorAll('[data-bilingual-original-hidden]').forEach(el => {
+    el.removeAttribute('data-bilingual-original-hidden');
   });
 }
 
@@ -944,7 +1221,7 @@ function setupHoverTranslation() {
 
       // Don't translate if selection is inside our translation elements
       const anchorEl = selection.anchorNode?.parentElement;
-      if (anchorEl?.closest(`.${TRANSLATION_CLASS}, [${TRANSLATED_ATTR}]`)) return;
+      if (anchorEl?.closest(`.${TRANSLATION_CLASS}`)) return;
 
       showHoverTooltip(text, e.clientX, e.clientY);
     }, 300);
@@ -989,6 +1266,7 @@ async function showHoverTooltip(text, x, y) {
     const tooltipText = hoverTooltip.querySelector('.tooltip-text');
     const port = chrome.runtime.connect({ name: 'translate-stream' });
     let fullText = '';
+    let didFallback = false;
 
     port.onMessage.addListener((msg) => {
       if (msg.type === 'chunk') {
@@ -1001,14 +1279,15 @@ async function showHoverTooltip(text, x, y) {
         port.disconnect();
       } else if (msg.type === 'error') {
         // Fallback to regular translation
+        didFallback = true;
         port.disconnect();
         fallbackTranslateTooltip(text, tooltipText);
       }
     });
 
     port.onDisconnect.addListener(() => {
-      // If no text was received, fallback
-      if (!fullText && tooltipText) {
+      // If no text was received and we haven't already triggered fallback
+      if (!fullText && !didFallback && tooltipText) {
         fallbackTranslateTooltip(text, tooltipText);
       }
     });
@@ -1047,5 +1326,57 @@ function dismissHoverTooltip() {
   }
 }
 
+// ========================================
+// SPA Navigation Detection
+// ========================================
+
+/**
+ * Detect SPA page navigation (URL changes without full reload).
+ * When detected, clear old translations and re-translate if auto-translating.
+ */
+function setupSPANavigationDetection() {
+  let lastUrl = location.href;
+
+  // Watch for URL changes via popstate (back/forward) and pushState/replaceState
+  const onNavigate = () => {
+    if (location.href === lastUrl) return;
+    lastUrl = location.href;
+    handleSPANavigation();
+  };
+
+  window.addEventListener('popstate', onNavigate);
+
+  // Patch pushState and replaceState to detect programmatic navigation
+  const origPushState = history.pushState;
+  const origReplaceState = history.replaceState;
+  history.pushState = function (...args) {
+    origPushState.apply(this, args);
+    onNavigate();
+  };
+  history.replaceState = function (...args) {
+    origReplaceState.apply(this, args);
+    onNavigate();
+  };
+}
+
+/**
+ * Handle SPA navigation: clean up old translations, re-translate if active.
+ */
+function handleSPANavigation() {
+  const wasAutoTranslating = isAutoTranslating;
+
+  // Clean up old state
+  isTranslating = false;
+  removeAllTranslations();
+
+  // If we were auto-translating, wait for new content to load then re-translate
+  if (wasAutoTranslating) {
+    setTimeout(() => {
+      translatePage();
+    }, 500);
+  }
+}
+
 // Initialize
+setupSPANavigationDetection();
 init();

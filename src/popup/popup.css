@@ -685,8 +685,13 @@ body::before {
   transform: scale(0.98);
 }
 
-.btn-save.saved {
+.btn-save.saved,
+.btn-save.btn-success {
   background: var(--success);
+}
+
+.btn-save.btn-error {
+  background: var(--error);
 }
 
 /* ---- Scrollbar ---- */

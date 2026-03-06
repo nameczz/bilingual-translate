@@ -135,6 +135,52 @@ ${numberedTexts}`;
   }
 
   /**
+   * Translate text using streaming SSE.
+   * Uses Gemini's streamGenerateContent endpoint with alt=sse.
+   */
+  async translateStream({ text, sourceLang, targetLang }) {
+    if (!this.apiKey) {
+      throw new Error('API key not configured.');
+    }
+
+    const targetName = getLanguageName(targetLang);
+    const sourceInstruction = sourceLang === 'auto'
+      ? 'Detect the source language and'
+      : `The source language is ${getLanguageName(sourceLang)}.`;
+
+    const prompt = `You are a professional translator. ${sourceInstruction} Translate the following text to ${targetName}.
+Rules:
+- Output ONLY the translated text, nothing else
+- Preserve the original formatting (line breaks, spacing)
+- Keep proper nouns, brand names, and technical terms as-is when appropriate
+- Maintain the tone and style of the original text
+
+Text to translate:
+${text}`;
+
+    const model = this.model || MODEL;
+    const url = `${GEMINI_API_BASE}/${model}:streamGenerateContent?alt=sse&key=${this.apiKey}`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: {
+          temperature: 0.3,
+          maxOutputTokens: 4096,
+        },
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.error?.message || `HTTP ${response.status}`);
+    }
+
+    return response.body;
+  }
+
+  /**
    * Call the Gemini generateContent API.
    * Gemini uses a different format than OpenAI: contents/parts instead of messages.
    */

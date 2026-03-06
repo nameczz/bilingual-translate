@@ -110,32 +110,6 @@
         </div>
       </div>
 
-      <div class="setting-group">
-        <label class="setting-label">Translation Trigger</label>
-        <div class="trigger-options">
-          <label class="radio-card">
-            <input type="radio" name="trigger" value="button" checked>
-            <div class="radio-card-inner">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="8" width="18" height="8" rx="4"/><circle cx="8" cy="12" r="2" fill="currentColor"/></svg>
-              <span>Button</span>
-            </div>
-          </label>
-          <label class="radio-card">
-            <input type="radio" name="trigger" value="hover">
-            <div class="radio-card-inner">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M5 3l14 9-7 1-4 7z"/></svg>
-              <span>Hover</span>
-            </div>
-          </label>
-          <label class="radio-card">
-            <input type="radio" name="trigger" value="select">
-            <div class="radio-card-inner">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 7h16M4 12h10M4 17h13"/><path d="M17 15l3 3-3 3" stroke-linecap="round"/></svg>
-              <span>Select</span>
-            </div>
-          </label>
-        </div>
-      </div>
     </section>
 
     <!-- Tab: API Configuration -->
@@ -144,6 +118,7 @@
         <label class="setting-label">Translation Provider</label>
         <div class="select-wrapper">
           <select id="provider">
+            <option value="google-translate">Google Translate (Free)</option>
             <option value="claude">Claude (Anthropic)</option>
             <option value="kimi">Kimi (Moonshot AI)</option>
             <option value="openai">OpenAI</option>
@@ -156,7 +131,7 @@
         </div>
       </div>
 
-      <div class="setting-group">
+      <div class="setting-group" id="apiKeyGroup">
         <label class="setting-label">API Key</label>
         <div class="input-wrapper">
           <input type="password" id="apiKey" placeholder="sk-..." autocomplete="off">
@@ -177,7 +152,7 @@
         </div>
       </div>
 
-      <div class="setting-group">
+      <div class="setting-group" id="modelGroup">
         <label class="setting-label">Model</label>
         <div class="select-wrapper">
           <select id="model">
@@ -198,47 +173,23 @@
     <!-- Tab: Display Settings -->
     <section class="tab-panel" id="tab-display">
       <div class="setting-group">
-        <label class="setting-label">Translation Style</label>
-        <div class="style-preview-grid">
-          <label class="style-card">
-            <input type="radio" name="displayStyle" value="underline" checked>
-            <div class="style-card-inner">
-              <div class="style-preview style-preview--underline">
-                <span class="preview-original">Hello World</span>
-                <span class="preview-translated">你好世界</span>
-              </div>
-              <span>Below Text</span>
-            </div>
-          </label>
-          <label class="style-card">
-            <input type="radio" name="displayStyle" value="side">
-            <div class="style-card-inner">
-              <div class="style-preview style-preview--side">
-                <span class="preview-original">Hello</span>
-                <span class="preview-divider">|</span>
-                <span class="preview-translated">你好</span>
-              </div>
-              <span>Side by Side</span>
-            </div>
-          </label>
-          <label class="style-card">
-            <input type="radio" name="displayStyle" value="tooltip">
-            <div class="style-card-inner">
-              <div class="style-preview style-preview--tooltip">
-                <span class="preview-original">Hello</span>
-                <span class="preview-tooltip">你好</span>
-              </div>
-              <span>Tooltip</span>
-            </div>
-          </label>
-        </div>
-      </div>
-
-      <div class="setting-group">
         <label class="setting-label">Translation Font Size</label>
         <div class="slider-group">
           <input type="range" id="fontSize" min="70" max="120" value="90" class="range-slider">
           <span class="slider-value" id="fontSizeValue">90%</span>
+        </div>
+      </div>
+
+      <div class="setting-group">
+        <div class="toggle-row">
+          <div>
+            <label class="setting-label no-margin">Translation Only</label>
+            <p class="setting-hint no-margin">Hide original text, show translation only</p>
+          </div>
+          <label class="toggle-switch">
+            <input type="checkbox" id="translationOnly">
+            <span class="toggle-slider"></span>
+          </label>
         </div>
       </div>
 

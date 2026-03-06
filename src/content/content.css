@@ -43,6 +43,16 @@
   }
 }
 
+/* ---- Translation Only: hide original, show only translation ---- */
+[data-bilingual-original-hidden] {
+  display: none !important;
+}
+.bilingual-translation.translation-only {
+  border-left: none;
+  padding-left: 0;
+  margin-top: 0;
+}
+
 /* ---- Translation Hidden (toggle visibility) ---- */
 .bilingual-translation.bilingual-hidden {
   display: none !important;
@@ -296,10 +306,9 @@
     inset 0 1px 0 rgba(255, 255, 255, 0.1);
 }
 
-/* FAB loading state */
+/* FAB loading state — clickable so user can stop translation */
 #bilingual-fab.loading {
   opacity: 1;
-  pointer-events: none;
 }
 
 #bilingual-fab.loading .fab-icon {
@@ -503,6 +512,12 @@
   .bilingual-translation.streaming::after {
     background: #D4A54A;
   }
+}
+
+/* Stream completed: keep visible, don't re-trigger slide-in animation */
+.bilingual-translation.stream-done {
+  opacity: 1;
+  animation: none;
 }
 
 /* Cursor fades out when streaming completes */

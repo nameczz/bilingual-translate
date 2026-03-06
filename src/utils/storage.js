@@ -11,11 +11,10 @@ const DEFAULT_SETTINGS = {
   model: 'claude-sonnet-4-5-20250929',
   targetLang: 'zh-CN',
   sourceLang: 'auto',
-  trigger: 'button',
-  displayStyle: 'underline',
   translationFontSize: 90,
   colorTranslation: true,
   smoothAnimations: true,
+  translationOnly: false,
   autoTranslate: false,
   theme: 'auto', // 'auto' | 'light' | 'dark'
 };

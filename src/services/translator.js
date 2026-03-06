@@ -23,20 +23,39 @@ export async function translateText(text, targetLang, sourceLang) {
     return { translatedText: cached, fromCache: true };
   }
 
-  const provider = getProvider(settings.provider);
+  let provider = getProvider(settings.provider);
   if (!provider) {
     throw new Error(`Translation provider "${settings.provider}" not found.`);
   }
 
-  // Load API key
-  const apiKey = await getApiKey(settings.provider);
-  if (!apiKey) {
-    throw new Error(`No API key configured for ${provider.getDisplayName()}. Please add your API key in the extension settings.`);
+  // Free providers (e.g. Google Translate) don't need an API key
+  const isFreeProvider = settings.provider === 'google-translate';
+  if (!isFreeProvider) {
+    const apiKey = await getApiKey(settings.provider);
+    if (!apiKey) {
+      provider = getProvider('google-translate');
+      if (!provider) {
+        throw new Error(`No API key configured. Please add your API key in the extension settings.`);
+      }
+    } else {
+      provider.setApiKey(apiKey);
+      if (settings.model) provider.setModel(settings.model);
+    }
   }
-  provider.setApiKey(apiKey);
-  if (settings.model) provider.setModel(settings.model);
 
-  const result = await provider.translate({ text, sourceLang, targetLang });
+  let result;
+  try {
+    result = await provider.translate({ text, sourceLang, targetLang });
+  } catch (err) {
+    // If AI provider fails (quota, rate limit, etc.), fallback to Google Translate
+    const fallback = getProvider('google-translate');
+    if (fallback && settings.provider !== 'google-translate') {
+      console.warn(`[Bilingual Translate] ${settings.provider} failed: ${err.message}, falling back to Google Translate`);
+      result = await fallback.translate({ text, sourceLang, targetLang });
+    } else {
+      throw err;
+    }
+  }
 
   // Cache the result
   await saveToCache(text, targetLang, result.translatedText);
@@ -57,14 +76,20 @@ export async function translateTextStream(text, targetLang, sourceLang) {
   targetLang = targetLang || settings.targetLang;
   sourceLang = sourceLang || settings.sourceLang;
 
-  const provider = getProvider(settings.provider);
+  let provider = getProvider(settings.provider);
   if (!provider) {
     throw new Error(`Translation provider "${settings.provider}" not found.`);
   }
 
+  // Free providers don't support streaming — fallback to non-streaming path
+  if (settings.provider === 'google-translate') {
+    throw new Error('no-streaming-support');
+  }
+
   const apiKey = await getApiKey(settings.provider);
   if (!apiKey) {
-    throw new Error(`No API key configured for ${provider.getDisplayName()}.`);
+    // No key — streaming not available, will fallback to non-streaming Google Translate
+    throw new Error('no-key-fallback');
   }
   provider.setApiKey(apiKey);
   if (settings.model) provider.setModel(settings.model);
@@ -102,23 +127,45 @@ export async function translateBatch(texts, targetLang, sourceLang) {
 
   if (uncachedTexts.length === 0) return results;
 
-  const provider = getProvider(settings.provider);
+  let provider = getProvider(settings.provider);
   if (!provider) {
     throw new Error(`Translation provider "${settings.provider}" not found.`);
   }
 
-  const apiKey = await getApiKey(settings.provider);
-  if (!apiKey) {
-    throw new Error(`No API key configured for ${provider.getDisplayName()}.`);
+  const isFreeProvider = settings.provider === 'google-translate';
+  if (!isFreeProvider) {
+    const apiKey = await getApiKey(settings.provider);
+    if (!apiKey) {
+      provider = getProvider('google-translate');
+      if (!provider) {
+        throw new Error(`No API key configured. Please add your API key in the extension settings.`);
+      }
+    } else {
+      provider.setApiKey(apiKey);
+      if (settings.model) provider.setModel(settings.model);
+    }
   }
-  provider.setApiKey(apiKey);
-  if (settings.model) provider.setModel(settings.model);
 
-  const translated = await provider.translateBatch({
-    texts: uncachedTexts,
-    sourceLang,
-    targetLang,
-  });
+  let translated;
+  try {
+    translated = await provider.translateBatch({
+      texts: uncachedTexts,
+      sourceLang,
+      targetLang,
+    });
+  } catch (err) {
+    const fallback = getProvider('google-translate');
+    if (fallback && settings.provider !== 'google-translate') {
+      console.warn(`[Bilingual Translate] ${settings.provider} batch failed: ${err.message}, falling back to Google Translate`);
+      translated = await fallback.translateBatch({
+        texts: uncachedTexts,
+        sourceLang,
+        targetLang,
+      });
+    } else {
+      throw err;
+    }
+  }
 
   // Merge results and cache
   for (let i = 0; i < uncachedIndices.length; i++) {

@@ -48,16 +48,13 @@ async function loadSettings() {
     if (els.model) els.model.value = settings.model || PROVIDER_MODELS[provider]?.[0]?.value || '';
 
     // Display settings
-    const displayStyle = document.querySelector(`input[name="displayStyle"][value="${settings.displayStyle || 'underline'}"]`);
-    if (displayStyle) displayStyle.checked = true;
-
-    const trigger = document.querySelector(`input[name="trigger"][value="${settings.trigger || 'button'}"]`);
-    if (trigger) trigger.checked = true;
-
     if (els.fontSize) {
       els.fontSize.value = settings.translationFontSize || 90;
       if (els.fontSizeValue) els.fontSizeValue.textContent = `${els.fontSize.value}%`;
     }
+
+    const translationOnlyToggle = document.getElementById('translationOnly');
+    if (translationOnlyToggle) translationOnlyToggle.checked = settings.translationOnly === true;
 
     const colorToggle = document.getElementById('colorTranslation');
     if (colorToggle) colorToggle.checked = settings.colorTranslation !== false;
@@ -65,14 +62,16 @@ async function loadSettings() {
     const animToggle = document.getElementById('smoothAnimations');
     if (animToggle) animToggle.checked = settings.smoothAnimations !== false;
 
-    // Load API key (masked)
-    const { hasKey } = await chrome.runtime.sendMessage({
-      action: 'hasApiKey',
-      provider: settings.provider || 'claude',
-    });
+    // Load API key (masked) — skip for free providers
+    if (!FREE_PROVIDERS.has(provider)) {
+      const { hasKey } = await chrome.runtime.sendMessage({
+        action: 'hasApiKey',
+        provider,
+      });
 
-    if (hasKey && els.apiKey) {
-      els.apiKey.placeholder = 'Key saved (enter new to replace)';
+      if (hasKey && els.apiKey) {
+        els.apiKey.placeholder = 'Key saved (enter new to replace)';
+      }
     }
 
     updateStatus('Ready to translate', 'ready');
@@ -91,9 +90,8 @@ async function saveAllSettings() {
     targetLang: els.targetLang?.value || 'zh-CN',
     provider: els.provider?.value || 'claude',
     model: els.model?.value || 'claude-sonnet-4-5-20250929',
-    displayStyle: document.querySelector('input[name="displayStyle"]:checked')?.value || 'underline',
-    trigger: document.querySelector('input[name="trigger"]:checked')?.value || 'button',
     translationFontSize: parseInt(els.fontSize?.value || '90', 10),
+    translationOnly: document.getElementById('translationOnly')?.checked ?? false,
     colorTranslation: document.getElementById('colorTranslation')?.checked ?? true,
     smoothAnimations: document.getElementById('smoothAnimations')?.checked ?? true,
   };
@@ -119,6 +117,7 @@ async function saveAllSettings() {
     }
 
     updateStatus('Settings saved!', 'success');
+    showButtonFeedback(els.saveSettings, 'Saved!', 'success');
 
     // Notify content script of settings change
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -134,6 +133,7 @@ async function saveAllSettings() {
     }
   } catch (err) {
     updateStatus('Error saving settings', 'error');
+    showButtonFeedback(els.saveSettings, 'Failed', 'error');
     console.error('[Bilingual Translate] Save error:', err);
   }
 }
@@ -238,6 +238,22 @@ function updateStatus(text, type) {
   }
 }
 
+/**
+ * Show temporary feedback on a button, then restore original text.
+ */
+function showButtonFeedback(btn, text, type) {
+  if (!btn) return;
+  const original = btn.innerHTML;
+  btn.textContent = text;
+  btn.classList.add(`btn-${type}`);
+  btn.disabled = true;
+  setTimeout(() => {
+    btn.innerHTML = original;
+    btn.classList.remove(`btn-${type}`);
+    btn.disabled = false;
+  }, 1500);
+}
+
 // Event listeners
 els.togglePower?.addEventListener('click', toggleTranslation);
 els.toggleKeyVisibility?.addEventListener('click', toggleKeyVisibility);
@@ -251,7 +267,11 @@ els.fontSize?.addEventListener('input', () => {
 });
 
 // Update model options and API key placeholder based on provider
+// Providers that don't require an API key
+const FREE_PROVIDERS = new Set(['google-translate']);
+
 const PROVIDER_MODELS = {
+  'google-translate': [],
   claude: [
     { value: 'claude-sonnet-4-5-20250929', label: 'Claude Sonnet 4.5' },
     { value: 'claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5 (Fast)' },
@@ -291,9 +311,22 @@ const PROVIDER_MODELS = {
 };
 
 function updateModelOptions(provider) {
+  const isFree = FREE_PROVIDERS.has(provider);
+  const apiKeyGroup = document.getElementById('apiKeyGroup');
+  const modelGroup = document.getElementById('modelGroup');
+  const verifyKey = document.getElementById('verifyKey');
+
+  // Hide API key, model, and verify button for free providers
+  if (apiKeyGroup) apiKeyGroup.style.display = isFree ? 'none' : '';
+  if (modelGroup) modelGroup.style.display = isFree ? 'none' : '';
+  if (verifyKey) verifyKey.style.display = isFree ? 'none' : '';
+
   if (!els.model) return;
   const models = PROVIDER_MODELS[provider];
-  if (!models) return;
+  if (!models || models.length === 0) {
+    els.model.innerHTML = '';
+    return;
+  }
   els.model.innerHTML = models.map(m =>
     `<option value="${m.value}">${m.label}</option>`
   ).join('');
@@ -302,6 +335,9 @@ function updateModelOptions(provider) {
 els.provider?.addEventListener('change', async () => {
   const provider = els.provider.value;
   updateModelOptions(provider);
+
+  // Free providers don't need API key management
+  if (FREE_PROVIDERS.has(provider)) return;
 
   // Check if this provider has a saved key
   const { hasKey } = await chrome.runtime.sendMessage({

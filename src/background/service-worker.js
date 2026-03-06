@@ -9,6 +9,7 @@ import { GeminiProvider } from '../services/gemini-provider.js';
 import { DeepSeekProvider } from '../services/deepseek-provider.js';
 import { QwenProvider } from '../services/qwen-provider.js';
 import { DoubaoProvider } from '../services/doubao-provider.js';
+import { GoogleTranslateProvider } from '../services/google-translate-provider.js';
 import { registerProvider, getProvider } from '../services/provider.js';
 import { translateText, translateBatch, translateTextStream } from '../services/translator.js';
 import { cleanCache, clearAllCache } from '../services/cache.js';
@@ -22,6 +23,7 @@ registerProvider('gemini', new GeminiProvider());
 registerProvider('deepseek', new DeepSeekProvider());
 registerProvider('qwen', new QwenProvider());
 registerProvider('doubao', new DoubaoProvider());
+registerProvider('google-translate', new GoogleTranslateProvider());
 
 // Context menu setup
 chrome.runtime.onInstalled.addListener(() => {
@@ -217,6 +219,10 @@ chrome.runtime.onConnect.addListener((port) => {
             }
             if (parsed.choices?.[0]?.delta?.content) {
               port.postMessage({ type: 'chunk', text: parsed.choices[0].delta.content });
+            }
+            // Gemini streamGenerateContent SSE format
+            if (parsed.candidates?.[0]?.content?.parts?.[0]?.text) {
+              port.postMessage({ type: 'chunk', text: parsed.candidates[0].content.parts[0].text });
             }
           } catch { /* skip unparseable lines */ }
         }
