@@ -228,8 +228,8 @@
 #bilingual-fab {
   position: fixed;
   z-index: 2147483646;
-  width: 48px;
-  height: 48px;
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
   border: none;
   cursor: pointer;
@@ -331,8 +331,8 @@
 
 /* FAB Icon */
 .fab-icon {
-  width: 22px;
-  height: 22px;
+  width: 18px;
+  height: 18px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -340,8 +340,8 @@
 }
 
 .fab-icon svg {
-  width: 22px;
-  height: 22px;
+  width: 18px;
+  height: 18px;
   fill: none;
   stroke: currentColor;
   stroke-width: 1.8;
@@ -352,7 +352,7 @@
 /* FAB Tooltip */
 .fab-tooltip {
   position: absolute;
-  right: 56px;
+  right: 44px;
   top: 50%;
   transform: translateY(-50%) translateX(4px);
   background: rgba(45, 43, 41, 0.92);
@@ -626,6 +626,64 @@
   }
 }
 
+/* ---- Provider Toggle Badge (anchored to FAB top-right) ---- */
+#bilingual-provider-toggle {
+  position: fixed;
+  z-index: 2147483647;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(255, 255, 255, 0.85);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: white;
+
+  opacity: 0.75;
+  transform: scale(1);
+  transition:
+    opacity 0.2s ease,
+    transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1),
+    background 0.3s ease;
+
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+#bilingual-provider-toggle:hover {
+  opacity: 1;
+  transform: scale(1.2);
+}
+
+#bilingual-provider-toggle:active {
+  transform: scale(0.88);
+}
+
+/* Google Translate mode — blue badge */
+#bilingual-provider-toggle.google-mode {
+  background: #4285F4;
+  box-shadow: 0 1px 4px rgba(66, 133, 244, 0.4);
+}
+
+/* AI mode — amber badge */
+#bilingual-provider-toggle.ai-mode {
+  background: #C4841D;
+  box-shadow: 0 1px 4px rgba(196, 132, 29, 0.4);
+}
+
+@media (prefers-color-scheme: dark) {
+  #bilingual-provider-toggle {
+    border-color: rgba(255, 255, 255, 0.6);
+  }
+}
+
 /* ---- Print: hide all extension UI ---- */
 @media print {
   .bilingual-translation,
@@ -633,7 +691,8 @@
   .bilingual-toast,
   .bilingual-hover-tooltip,
   #bilingual-fab,
-  #bilingual-progress-bar {
+  #bilingual-progress-bar,
+  #bilingual-provider-toggle {
     display: none !important;
   }
 }

@@ -9,12 +9,15 @@ const TRANSLATION_CLASS = 'bilingual-translation';
 const FAB_ID = 'bilingual-fab';
 const FAB_STORAGE_KEY = 'bilingual-fab-position';
 const PROGRESS_BAR_ID = 'bilingual-progress-bar';
+const PROVIDER_TOGGLE_ID = 'bilingual-provider-toggle';
 const HIDDEN_CLASS = 'bilingual-hidden';
 
 let isTranslating = false;
 let translationsHidden = false;
 let settings = null;
 let fab = null;
+let providerToggle = null;
+let lastAIProvider = null;
 let mutationObserver = null;
 let observerTranslateTimer = null;
 let isAutoTranslating = false; // true when MutationObserver-driven translation is active
@@ -36,6 +39,9 @@ let pendingMutationRoots = null;
  */
 async function init() {
   settings = await chrome.runtime.sendMessage({ action: 'getSettings' });
+  if (settings?.provider && settings.provider !== 'google-translate') {
+    lastAIProvider = settings.provider;
+  }
   setupMessageListener();
 
   // Check site rules before creating FAB
@@ -100,6 +106,7 @@ function setupMessageListener() {
 
       case 'settingsUpdated':
         settings = message.settings;
+        updateProviderToggleLabel();
         sendResponse({ success: true });
         return false;
 
@@ -165,6 +172,71 @@ function createFAB() {
   setupFABDrag(fab);
 
   document.body.appendChild(fab);
+  createProviderToggle();
+}
+
+// ========================================
+// Provider Toggle Button
+// ========================================
+
+function createProviderToggle() {
+  if (document.getElementById(PROVIDER_TOGGLE_ID)) return;
+
+  providerToggle = document.createElement('button');
+  providerToggle.id = PROVIDER_TOGGLE_ID;
+  providerToggle.setAttribute('aria-label', 'Switch translation provider');
+
+  updateProviderToggleLabel();
+  providerToggle.addEventListener('click', handleProviderToggleClick);
+  document.body.appendChild(providerToggle);
+  syncTogglePosition();
+}
+
+function updateProviderToggleLabel() {
+  if (!providerToggle) return;
+  const isGoogle = settings?.provider === 'google-translate';
+  providerToggle.textContent = isGoogle ? 'G' : 'AI';
+  providerToggle.classList.toggle('google-mode', isGoogle);
+  providerToggle.classList.toggle('ai-mode', !isGoogle);
+  providerToggle.title = isGoogle ? 'Using Google Translate (click for AI)' : 'Using AI (click for Google)';
+}
+
+async function handleProviderToggleClick(e) {
+  e.stopPropagation();
+  const isGoogle = settings?.provider === 'google-translate';
+
+  if (isGoogle) {
+    settings.provider = lastAIProvider || 'claude';
+  } else {
+    lastAIProvider = settings.provider;
+    settings.provider = 'google-translate';
+  }
+
+  updateProviderToggleLabel();
+
+  try {
+    await chrome.runtime.sendMessage({ action: 'saveSettings', settings });
+  } catch { /* ignore */ }
+
+  const newProvider = isGoogle ? 'AI' : 'Google Translate';
+
+  if (hasTranslations()) {
+    removeAllTranslations();
+    translationsHidden = false;
+    showToast(`Switched to ${newProvider}, re-translating...`, 'info');
+    translatePage();
+  } else {
+    showToast(`Switched to ${newProvider}`, 'info');
+  }
+}
+
+function syncTogglePosition() {
+  if (!providerToggle || !fab) return;
+  const fabRight = parseInt(fab.style.right);
+  const fabBottom = parseInt(fab.style.bottom);
+  // Badge center sits at FAB's top-right corner
+  providerToggle.style.right = (fabRight - 6) + 'px';
+  providerToggle.style.bottom = (fabBottom + 36 - 6) + 'px';
 }
 
 /**
@@ -277,11 +349,12 @@ function setupFABDrag(el) {
     hasMoved = true;
     el.classList.add('dragging');
 
-    const newRight = Math.max(8, Math.min(window.innerWidth - 56, startRight - dx));
-    const newBottom = Math.max(8, Math.min(window.innerHeight - 56, startBottom - dy));
+    const newRight = Math.max(8, Math.min(window.innerWidth - 44, startRight - dx));
+    const newBottom = Math.max(8, Math.min(window.innerHeight - 44, startBottom - dy));
 
     el.style.right = newRight + 'px';
     el.style.bottom = newBottom + 'px';
+    syncTogglePosition();
   });
 
   el.addEventListener('pointerup', (e) => {
@@ -396,7 +469,7 @@ function startObservingDOM() {
         for (const node of mutation.addedNodes) {
           if (node.nodeType === Node.ELEMENT_NODE &&
               !node.classList?.contains(TRANSLATION_CLASS) &&
-              !node.closest?.(`#${FAB_ID}, #${PROGRESS_BAR_ID}, .bilingual-hover-tooltip, .bilingual-popup`)) {
+              !node.closest?.(`#${FAB_ID}, #${PROGRESS_BAR_ID}, #${PROVIDER_TOGGLE_ID}, .bilingual-hover-tooltip, .bilingual-popup`)) {
             pendingMutationRoots.add(node);
           }
         }
@@ -581,6 +654,12 @@ function translateParagraphStreaming(paragraph) {
     const { nodes } = paragraph;
     const fullText = nodes.map(n => n.text).join(' ');
 
+    // Skip if text is already in the target language
+    if (isLikelyTargetLang(fullText)) {
+      resolve();
+      return;
+    }
+
     // Create translation element
     const firstNode = nodes[0].node;
     const parent = firstNode.parentElement;
@@ -682,6 +761,52 @@ async function translateParagraphFallback(paragraph, translationEl) {
     throw new Error(response.error);
   }
   translationEl.textContent = response.translatedText;
+}
+
+/**
+ * Lightweight script-based check: is this text likely already in the target language?
+ * Works by comparing the dominant Unicode script of the text against the expected
+ * script for settings.targetLang.  Only triggers for script families that uniquely
+ * identify a language (CJK → zh, Kana → ja, Hangul → ko, Cyrillic, Arabic, Thai…).
+ * Returns false for Latin-target languages (en/fr/de/es…) because script alone
+ * can't distinguish them.
+ */
+function isLikelyTargetLang(text) {
+  const target = settings?.targetLang;
+  if (!target) return false;
+
+  // Strip spaces, digits, punctuation, symbols — keep only "letter" characters
+  const letters = text.replace(/[\s\d\p{P}\p{S}]/gu, '');
+  if (letters.length < 8) return false; // too short to judge
+
+  const total = letters.length;
+  const THRESHOLD = 0.7;
+
+  const count = (regex) => (letters.match(regex) || []).length;
+
+  if (target.startsWith('zh')) {
+    return count(/[\u4e00-\u9fff\u3400-\u4dbf]/g) / total > THRESHOLD;
+  }
+  if (target === 'ja') {
+    return count(/[\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff]/g) / total > THRESHOLD;
+  }
+  if (target === 'ko') {
+    return count(/[\uac00-\ud7af\u1100-\u11ff\u3130-\u318f]/g) / total > THRESHOLD;
+  }
+  if (['ru', 'uk', 'bg', 'sr', 'be'].includes(target)) {
+    return count(/[\u0400-\u04ff]/g) / total > THRESHOLD;
+  }
+  if (['ar', 'fa', 'ur'].includes(target)) {
+    return count(/[\u0600-\u06ff\u0750-\u077f\u08a0-\u08ff]/g) / total > THRESHOLD;
+  }
+  if (target === 'th') {
+    return count(/[\u0e00-\u0e7f]/g) / total > THRESHOLD;
+  }
+  if (target === 'hi' || target === 'mr' || target === 'ne') {
+    return count(/[\u0900-\u097f]/g) / total > THRESHOLD;
+  }
+  // Latin-script languages — can't distinguish by script alone, always translate
+  return false;
 }
 
 const HEADING_TAGS = new Set(['H1', 'H2', 'H3', 'H4', 'H5', 'H6']);
@@ -1034,7 +1159,7 @@ function extractTextNodes(root) {
         if (parent.closest(`[${TRANSLATED_ATTR}]`)) return NodeFilter.FILTER_REJECT;
         if (parent.classList.contains(TRANSLATION_CLASS)) return NodeFilter.FILTER_REJECT;
         // Skip extension UI elements
-        if (parent.closest(`#${FAB_ID}, #${PROGRESS_BAR_ID}, .bilingual-hover-tooltip, .bilingual-popup, .bilingual-toast`)) return NodeFilter.FILTER_REJECT;
+        if (parent.closest(`#${FAB_ID}, #${PROGRESS_BAR_ID}, #${PROVIDER_TOGGLE_ID}, .bilingual-hover-tooltip, .bilingual-popup, .bilingual-toast`)) return NodeFilter.FILTER_REJECT;
         const text = node.textContent.trim();
         if (text.length < MIN_LENGTH) return NodeFilter.FILTER_REJECT;
         if (/^[\d\s\p{P}]+$/u.test(text)) return NodeFilter.FILTER_REJECT;
