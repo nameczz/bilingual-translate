@@ -7,11 +7,10 @@
 .bilingual-translation {
   display: block;
   margin-top: 4px;
-  padding: 3px 0 3px 10px;
+  padding: 3px 0;
   color: #8B6914;
   font-size: 0.92em;
   line-height: 1.6;
-  border-left: 2.5px solid #C4841D;
   font-style: normal;
   opacity: 0;
   animation: bilingual-slide-in 0.35s ease forwards;
@@ -22,7 +21,6 @@
 .bilingual-translation.no-color {
   color: inherit;
   opacity: 0.7;
-  border-left-color: #ccc;
 }
 
 /* No-animation mode */
@@ -35,11 +33,9 @@
 @media (prefers-color-scheme: dark) {
   .bilingual-translation {
     color: #D4A54A;
-    border-left-color: #C4841D;
   }
   .bilingual-translation.no-color {
     color: inherit;
-    border-left-color: #666;
   }
 }
 
@@ -48,7 +44,6 @@
   display: none !important;
 }
 .bilingual-translation.translation-only {
-  border-left: none;
   padding-left: 0;
   margin-top: 0;
 }
@@ -495,22 +490,29 @@
   animation: bilingual-word-appear 0.3s ease forwards;
 }
 
-/* Typewriter cursor: blinking caret at end of streaming text */
-.bilingual-translation.streaming::after {
+/* Loading spinner while streaming */
+.bilingual-translation.streaming::before {
   content: '';
   display: inline-block;
-  width: 2px;
-  height: 1.1em;
-  background: #C4841D;
-  margin-left: 2px;
-  vertical-align: text-bottom;
-  border-radius: 1px;
-  animation: bilingual-cursor-blink 0.8s steps(2) infinite;
+  width: 12px;
+  height: 12px;
+  border: 1.5px solid rgba(196, 132, 29, 0.25);
+  border-top-color: #C4841D;
+  border-radius: 50%;
+  margin-right: 6px;
+  vertical-align: middle;
+  animation: bilingual-spin 0.6s linear infinite;
+}
+
+/* Hide spinner once text starts arriving */
+.bilingual-translation.streaming.has-content::before {
+  display: none;
 }
 
 @media (prefers-color-scheme: dark) {
-  .bilingual-translation.streaming::after {
-    background: #D4A54A;
+  .bilingual-translation.streaming::before {
+    border-color: rgba(212, 165, 74, 0.25);
+    border-top-color: #D4A54A;
   }
 }
 
@@ -520,10 +522,7 @@
   animation: none;
 }
 
-/* Cursor fades out when streaming completes */
-.bilingual-translation.stream-done::after {
-  animation: bilingual-cursor-fade 0.4s ease forwards;
-}
+/* Stream done — no extra pseudo-elements needed */
 
 @keyframes bilingual-word-appear {
   from {
@@ -538,15 +537,6 @@
   }
 }
 
-@keyframes bilingual-cursor-blink {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0; }
-}
-
-@keyframes bilingual-cursor-fade {
-  from { opacity: 1; }
-  to { opacity: 0; width: 0; margin-left: 0; }
-}
 
 /* ---- Hover Translation Tooltip ---- */
 .bilingual-hover-tooltip {

@@ -218,15 +218,10 @@ async function handleProviderToggleClick(e) {
     await chrome.runtime.sendMessage({ action: 'saveSettings', settings });
   } catch { /* ignore */ }
 
-  const newProvider = isGoogle ? 'AI' : 'Google Translate';
-
   if (hasTranslations()) {
     removeAllTranslations();
     translationsHidden = false;
-    showToast(`Switched to ${newProvider}, re-translating...`, 'info');
     translatePage();
-  } else {
-    showToast(`Switched to ${newProvider}`, 'info');
   }
 }
 
@@ -711,7 +706,7 @@ function translateParagraphStreaming(paragraph) {
       if (settled) return;
       settled = true;
       activePorts.delete(port);
-      translationEl.classList.remove('streaming');
+      translationEl.classList.remove('streaming', 'has-content');
       translationEl.classList.add('stream-done');
       resolve();
     };
@@ -720,6 +715,9 @@ function translateParagraphStreaming(paragraph) {
       if (msg.type === 'chunk') {
         accumulated += msg.text;
         translationEl.textContent = accumulated;
+        if (!translationEl.classList.contains('has-content')) {
+          translationEl.classList.add('has-content');
+        }
       } else if (msg.type === 'done') {
         port.disconnect();
         finish();
